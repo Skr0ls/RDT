@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rdt.presets.catalog import ServicePreset, CATEGORY_RELATIONAL, CATEGORY_NOSQL
 from rdt.port_utils import is_port_free, validate_port
 from rdt.smart_mapping import get_candidate_parents, apply_smart_mapping
+from rdt.i18n import t
 
 console = Console()
 
@@ -31,7 +32,7 @@ def run_wizard(
     """
     answers: dict[str, Any] = {}
 
-    console.print(f"\n[bold cyan]⚙  Настройка сервиса: {preset.display_name}[/]\n")
+    console.print(t("wizard.configuring", name=preset.display_name))
 
     # ── 1. Порт ──────────────────────────────────────────────────────────────
     answers["port"] = _ask_port(preset)
@@ -39,7 +40,7 @@ def run_wizard(
     # ── 2. Credentials ───────────────────────────────────────────────────────
     if preset.default_env and not hardcore:
         use_default = questionary.confirm(
-            f"Использовать стандартные credentials?",
+            t("wizard.use_default_creds"),
             default=True,
         ).ask()
         answers["use_default_creds"] = use_default
@@ -66,19 +67,20 @@ def run_wizard(
 
 def _ask_port(preset: ServicePreset) -> int:
     default_free = is_port_free(preset.default_port)
-    default_label = f"{preset.default_port}" + ("" if default_free else " [занят!]")
+    busy_suffix = "" if default_free else t("wizard.port_busy_suffix")
+    default_label = f"{preset.default_port}{busy_suffix}"
 
     choice = questionary.select(
-        "Порт:",
+        t("wizard.port_question"),
         choices=[
-            questionary.Choice(f"Стандартный ({default_label})", value="default"),
-            questionary.Choice("Ввести вручную", value="custom"),
+            questionary.Choice(t("wizard.port_default", label=default_label), value="default"),
+            questionary.Choice(t("wizard.port_custom"), value="custom"),
         ],
     ).ask()
 
     if choice == "default":
         if not default_free:
-            console.print(f"[yellow]⚠  Порт {preset.default_port} занят. Укажите другой.[/]")
+            console.print(t("wizard.port_busy_warn", port=preset.default_port))
             return _ask_custom_port(preset.default_port)
         return preset.default_port
     else:
@@ -87,7 +89,7 @@ def _ask_port(preset: ServicePreset) -> int:
 
 def _ask_custom_port(hint: int) -> int:
     while True:
-        raw = questionary.text(f"Введите порт (подсказка: {hint}):").ask()
+        raw = questionary.text(t("wizard.port_enter", hint=hint)).ask()
         ok, msg = validate_port(raw or "")
         if ok:
             return int(raw)
@@ -101,11 +103,11 @@ def _needs_volume(preset: ServicePreset) -> bool:
 def _ask_volume(preset: ServicePreset) -> str:
     default_named = f"{preset.name}_data"
     choice = questionary.select(
-        "Хранилище данных (volume):",
+        t("wizard.volume_question"),
         choices=[
-            questionary.Choice(f"Именованный volume ({default_named})", value="named"),
-            questionary.Choice("Локальная папка (./data/<service>)", value="local"),
-            questionary.Choice("Ввести вручную", value="custom"),
+            questionary.Choice(t("wizard.volume_named", name=default_named), value="named"),
+            questionary.Choice(t("wizard.volume_local"), value="local"),
+            questionary.Choice(t("wizard.volume_custom"), value="custom"),
         ],
     ).ask()
 
@@ -114,14 +116,14 @@ def _ask_volume(preset: ServicePreset) -> str:
     elif choice == "local":
         return f"./data/{preset.name}"
     else:
-        return questionary.text("Введите путь или имя volume:").ask() or default_named
+        return questionary.text(t("wizard.volume_enter")).ask() or default_named
 
 
 def _ask_depends_on(existing_services: list[str]) -> list[str]:
     if not existing_services:
         return []
     choices = questionary.checkbox(
-        "Зависимости (depends_on). Отметьте пробелом, Enter — пропустить:",
+        t("wizard.depends_question"),
         choices=existing_services,
     ).ask()
     return choices or []
@@ -141,24 +143,25 @@ def _ask_smart_mapping(
         "phpmyadmin": "MySQL / MariaDB",
         "mongo-express": "MongoDB",
     }
-    parent_label = labels.get(service_name, "родительский сервис")
+    parent_label = labels.get(service_name, t("wizard.smart_mapping_default_label"))
 
-    console.print(f"\n[bold green]🔗 Smart Mapping[/]: обнаружен {parent_label}")
+    console.print(t("wizard.smart_mapping_found", label=parent_label))
 
     if len(candidates) == 1:
         use = questionary.confirm(
-            f"Автоматически подключить к [{candidates[0]}]?",
+            t("wizard.smart_mapping_auto", service=candidates[0]),
             default=True,
         ).ask()
         if use:
             answers["parent_service"] = candidates[0]
             answers = apply_smart_mapping(service_name, existing_services, answers)
     else:
+        skip_label = t("wizard.smart_mapping_skip")
         selected = questionary.select(
-            f"Выберите {parent_label} для подключения:",
-            choices=candidates + ["— пропустить —"],
+            t("wizard.smart_mapping_select", label=parent_label),
+            choices=candidates + [skip_label],
         ).ask()
-        if selected != "— пропустить —":
+        if selected != skip_label:
             answers["parent_service"] = selected
             answers = apply_smart_mapping(service_name, existing_services, answers)
 
@@ -176,21 +179,22 @@ def run_main_menu() -> str:
     """
     console.print()
     console.print(Panel.fit(
-        "[bold cyan]🐳  Rambo Docker Tools[/]\n"
-        "[dim]Интерактивный генератор docker-compose.yml[/]",
+        f"[bold cyan]{t('menu.panel_title')}[/]\n"
+        f"[dim]{t('menu.panel_subtitle')}[/]",
         border_style="cyan",
         padding=(0, 2),
     ))
     console.print()
 
     choice = questionary.select(
-        "Что хотите сделать?",
+        t("menu.question"),
         choices=[
-            questionary.Choice("📦  Добавить сервис",                        value="add"),
-            questionary.Choice("🗂   Инициализировать проект (rdt init)",    value="init"),
-            questionary.Choice("📋  Показать все доступные сервисы",         value="list"),
-            questionary.Choice("🚀  Запустить контейнеры (docker compose up)", value="up"),
-            questionary.Choice("❌  Выход",                                   value="exit"),
+            questionary.Choice(t("menu.add"),   value="add"),
+            questionary.Choice(t("menu.init"),  value="init"),
+            questionary.Choice(t("menu.list"),  value="list"),
+            questionary.Choice(t("menu.up"),    value="up"),
+            questionary.Choice(t("menu.lang"),  value="lang"),
+            questionary.Choice(t("menu.exit"),  value="exit"),
         ],
         use_indicator=True,
     ).ask()
@@ -214,15 +218,15 @@ def ask_service_choice() -> str | None:
         choices.append(questionary.Separator(f"── {category} ──"))
         for p in presets:
             choices.append(questionary.Choice(
-                f"{p.display_name}  (порт {p.default_port})",
+                f"{p.display_name}  ({t('menu.port_label')} {p.default_port})",
                 value=p.name,
             ))
 
     choices.append(questionary.Separator("─" * 36))
-    choices.append(questionary.Choice("← Назад в меню", value=None))
+    choices.append(questionary.Choice(t("menu.back"), value=None))
 
     selected = questionary.select(
-        "Выберите сервис для добавления:",
+        t("menu.service_choice"),
         choices=choices,
     ).ask()
 

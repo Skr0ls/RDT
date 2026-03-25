@@ -1,6 +1,6 @@
 """
 CLI точка входа для RDT (Rambo Docker Tools).
-Команды: init, add, list, up
+Команды: init, add, list, up, lang
 """
 from __future__ import annotations
 import subprocess
@@ -19,10 +19,12 @@ from rdt.strategies.factory import get_strategy
 from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services
 from rdt.env_manager import get_env_values, write_env, write_env_example
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
+from rdt.i18n import t
+import rdt.i18n as i18n
 
 app = typer.Typer(
     name="rdt",
-    help="[bold cyan]Rambo Docker Tools[/] — генератор docker-compose.yml",
+    help=t("app.help"),
     rich_markup_mode="rich",
 )
 console = Console()
@@ -35,13 +37,8 @@ ENV_EXAMPLE_FILE = Path(".env.example")
 # ─────────────────────────────────────────────────────────────────────────────
 # Callback — запускает интерактивное меню при rdt без аргументов
 # ─────────────────────────────────────────────────────────────────────────────
-@app.callback(invoke_without_command=True)
+@app.callback(invoke_without_command=True, help=t("app.callback_help"))
 def main(ctx: typer.Context) -> None:
-    """[bold cyan]Rambo Docker Tools[/] — генератор docker-compose.yml
-
-    Запустите [green]rdt[/] без аргументов для интерактивного меню
-    или используйте подкоманды напрямую.
-    """
     if ctx.invoked_subcommand is None:
         _run_interactive()
 
@@ -75,77 +72,79 @@ def _run_interactive() -> None:
                 except SystemExit:
                     pass
 
+        elif action == "lang":
+            _change_language()
+            continue  # Меню сразу перерисуется с новым языком
+
         console.print()
-        cont = questionary.confirm("Сделать что-то ещё?", default=False).ask()
+        cont = questionary.confirm(t("msg.do_more"), default=False).ask()
         if not cont:
             break
+
+
+def _change_language() -> None:
+    """Интерактивная смена языка прямо внутри сессии."""
+    langs = i18n.available_langs()
+    current = i18n.current_lang()
+    choices = [
+        questionary.Choice(f"{lang}  ✓" if lang == current else lang, value=lang)
+        for lang in langs
+    ]
+    selected = questionary.select(t("menu.lang_choose"), choices=choices).ask()
+    if selected and selected != current:
+        i18n.set_lang(selected)
+        i18n.reload()
+        console.print(t("lang.changed", lang=selected))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # rdt init
 # ─────────────────────────────────────────────────────────────────────────────
-@app.command()
+@app.command(help=t("cmd.init.help"))
 def init(
-    file: Annotated[Path, typer.Option("--file", "-f", help="Путь к файлу")] = COMPOSE_FILE,
-    force: Annotated[bool, typer.Option("--force", help="Перезаписать если существует")] = False,
+    file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.init.opt_file"))] = COMPOSE_FILE,
+    force: Annotated[bool, typer.Option("--force", help=t("cmd.init.opt_force"))] = False,
 ) -> None:
-    """Создать базовый docker-compose.yml с сетью rambo-net."""
     if file.exists() and not force:
-        console.print(f"[yellow]⚠  {file} уже существует. Используйте --force для перезаписи.[/]")
+        console.print(t("msg.file_exists", file=file))
         raise typer.Exit(1)
 
     data = make_base_compose()
     save_compose(file, data)
-    console.print(f"[green]✓[/] Создан [bold]{file}[/] с сетью [cyan]rambo-net[/]")
+    console.print(t("msg.compose_created", file=file))
 
     # Инициализировать .env и .env.example если не существуют
     if not ENV_FILE.exists():
         ENV_FILE.touch()
-        console.print(f"[green]✓[/] Создан пустой [bold]{ENV_FILE}[/]")
+        console.print(t("msg.env_created", file=ENV_FILE))
     if not ENV_EXAMPLE_FILE.exists():
         ENV_EXAMPLE_FILE.touch()
-        console.print(f"[green]✓[/] Создан пустой [bold]{ENV_EXAMPLE_FILE}[/]")
+        console.print(t("msg.env_created", file=ENV_EXAMPLE_FILE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # rdt add
 # ─────────────────────────────────────────────────────────────────────────────
-@app.command()
+@app.command(help=t("cmd.add.help"))
 def add(
-    service: Annotated[str, typer.Argument(help="Имя сервиса (например: postgres, redis, kafka)")],
-    file: Annotated[Path, typer.Option("--file", "-f", help="Путь к docker-compose.yml")] = COMPOSE_FILE,
-    hardcore: Annotated[bool, typer.Option("--hardcore", help="Генерировать уникальные пароли")] = False,
-    # ── Режим без мастера (для скриптинга) ───────────────────────────────────
-    yes: Annotated[bool, typer.Option("--yes", "-y", help="Не запускать мастер, использовать значения по умолчанию")] = False,
-    port: Annotated[Optional[int], typer.Option("--port", "-p", help="Внешний порт сервиса")] = None,
-    volume: Annotated[Optional[str], typer.Option("--volume", help="Volume или путь для данных (например: ./data/pg)")] = None,
-    depends_on: Annotated[Optional[list[str]], typer.Option("--depends-on", help="Зависимость (можно указать несколько раз)")] = None,
+    service: Annotated[str, typer.Argument(help=t("cmd.add.arg_service"))],
+    file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.add.opt_file"))] = COMPOSE_FILE,
+    hardcore: Annotated[bool, typer.Option("--hardcore", help=t("cmd.add.opt_hardcore"))] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help=t("cmd.add.opt_yes"))] = False,
+    port: Annotated[Optional[int], typer.Option("--port", "-p", help=t("cmd.add.opt_port"))] = None,
+    volume: Annotated[Optional[str], typer.Option("--volume", help=t("cmd.add.opt_volume"))] = None,
+    depends_on: Annotated[Optional[list[str]], typer.Option("--depends-on", help=t("cmd.add.opt_depends_on"))] = None,
 ) -> None:
-    """Добавить сервис в docker-compose.yml.
-
-    По умолчанию запускает интерактивный мастер настройки.
-    С флагом [green]--yes[/] (-y) пропускает все вопросы и использует значения по умолчанию.
-
-    [bold]Примеры (скрипт-режим):[/]
-
-      rdt add postgres --yes
-
-      rdt add postgres --yes --port 5433 --volume ./data/pg
-
-      rdt add redis --yes --depends-on rdt-postgres --depends-on rdt-rabbitmq
-
-      rdt add postgres --hardcore --yes
-    """
     service = service.lower()
     preset = ALL_PRESETS.get(service)
     if preset is None:
-        console.print(f"[red]✗[/] Неизвестный сервис: [bold]{service}[/]")
-        console.print("Используйте [cyan]rdt list[/] для просмотра доступных сервисов.")
+        console.print(t("msg.service_unknown", service=service))
+        console.print(t("msg.use_rdt_list"))
         raise typer.Exit(1)
 
     # Загрузить или создать файл
     if not file.exists():
-        console.print(f"[yellow]⚠  {file} не найден. Создаю базовый файл...[/]")
+        console.print(t("msg.compose_not_found_create", file=file))
         data = make_base_compose()
     else:
         data = load_compose(file)
@@ -155,13 +154,13 @@ def add(
     # Проверить что сервис не добавлен дважды
     container_name = preset.name
     if container_name in existing:
-        console.print(f"[yellow]⚠  Сервис [bold]{container_name}[/] уже присутствует в {file}[/]")
+        console.print(t("msg.file_exists", file=f"{container_name} in {file}"))
         raise typer.Exit(1)
 
     # Режим с мастером или без
     script_mode = yes or port is not None or volume is not None or depends_on is not None
     if script_mode:
-        console.print(f"\n[bold cyan]⚙  Добавление сервиса: {preset.display_name}[/] [dim](скрипт-режим)[/]\n")
+        console.print(t("msg.adding_service_script", name=preset.display_name))
         answers = build_script_answers(
             preset=preset,
             port=port,
@@ -188,27 +187,26 @@ def add(
     write_env(ENV_FILE, env_values)
     write_env_example(ENV_EXAMPLE_FILE, env_values)
 
-    console.print(f"\n[green]✓[/] Сервис [bold cyan]{preset.display_name}[/] добавлен в [bold]{file}[/]")
+    console.print(t("msg.service_added", name=preset.display_name, file=file))
     if env_values:
-        console.print(f"[green]✓[/] Переменные окружения записаны в [bold]{ENV_FILE}[/]")
+        console.print(t("msg.env_written", file=ENV_FILE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # rdt list
 # ─────────────────────────────────────────────────────────────────────────────
-@app.command(name="list")
+@app.command(name="list", help=t("cmd.list.help"))
 def list_presets() -> None:
-    """Показать все доступные пресеты по категориям."""
     categories: dict[str, list[ServicePreset]] = {}
     for preset in ALL_PRESETS.values():
         categories.setdefault(preset.category, []).append(preset)
 
-    table = Table(title="🐳 RDT — Доступные сервисы", box=box.ROUNDED, show_lines=True)
-    table.add_column("Категория", style="cyan bold", no_wrap=True)
-    table.add_column("Команда", style="green")
-    table.add_column("Сервис", style="white")
-    table.add_column("Image", style="dim")
-    table.add_column("Порт", style="yellow", justify="right")
+    table = Table(title=t("table.title"), box=box.ROUNDED, show_lines=True)
+    table.add_column(t("table.col_category"), style="cyan bold", no_wrap=True)
+    table.add_column(t("table.col_command"), style="green")
+    table.add_column(t("table.col_service"), style="white")
+    table.add_column(t("table.col_image"), style="dim")
+    table.add_column(t("table.col_port"), style="yellow", justify="right")
 
     for category, presets in categories.items():
         for i, p in enumerate(presets):
@@ -226,23 +224,60 @@ def list_presets() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # rdt up
 # ─────────────────────────────────────────────────────────────────────────────
-@app.command()
+@app.command(help=t("cmd.up.help"))
 def up(
-    file: Annotated[Path, typer.Option("--file", "-f", help="Путь к docker-compose.yml")] = COMPOSE_FILE,
-    detach: Annotated[bool, typer.Option("--detach/--no-detach", "-d", help="Фоновый режим")] = True,
+    file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.up.opt_file"))] = COMPOSE_FILE,
+    detach: Annotated[bool, typer.Option("--detach/--no-detach", "-d", help=t("cmd.up.opt_detach"))] = True,
 ) -> None:
-    """Запустить docker compose up (прокси-команда)."""
     if not file.exists():
-        console.print(f"[red]✗[/] Файл [bold]{file}[/] не найден. Сначала выполните [cyan]rdt init[/]")
+        console.print(t("msg.compose_not_found_run", file=file))
         raise typer.Exit(1)
 
     cmd = ["docker", "compose", "-f", str(file), "up"]
     if detach:
         cmd.append("-d")
 
-    console.print(f"[cyan]▶[/] Выполняю: [bold]{' '.join(cmd)}[/]\n")
+    console.print(t("msg.running_cmd", cmd=" ".join(cmd)))
     result = subprocess.run(cmd)
     sys.exit(result.returncode)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# rdt lang
+# ─────────────────────────────────────────────────────────────────────────────
+@app.command(name="lang", help=t("cmd.lang.help"))
+def lang_cmd(
+    action: Annotated[Optional[str], typer.Argument(help=t("cmd.lang.arg_action"))] = None,
+    value: Annotated[Optional[str], typer.Argument(help=t("cmd.lang.arg_value"))] = None,
+) -> None:
+    # Без аргументов — интерактивный выбор языка
+    if action is None:
+        _change_language()
+        return
+
+    if action == "list":
+        console.print(t("lang.current", lang=i18n.current_lang()))
+        console.print(t("lang.available"))
+        for lang in i18n.available_langs():
+            marker = "  ✓" if lang == i18n.current_lang() else ""
+            console.print(f"  [green]{lang}[/]{marker}")
+        return
+
+    if action == "set":
+        if value is None:
+            console.print(t("lang.missing_value"))
+            raise typer.Exit(1)
+        if i18n.set_lang(value):
+            console.print(t("lang.changed", lang=value))
+        else:
+            console.print(t("lang.unknown", lang=value))
+            console.print(t("lang.available_list", langs=", ".join(i18n.available_langs())))
+            raise typer.Exit(1)
+        return
+
+    # Неизвестное действие
+    console.print(t("lang.unknown", lang=action))
+    raise typer.Exit(1)
 
 
 if __name__ == "__main__":

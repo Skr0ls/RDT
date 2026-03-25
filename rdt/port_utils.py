@@ -4,6 +4,8 @@
 from __future__ import annotations
 import socket
 
+from rdt.i18n import t
+
 
 def is_port_free(port: int, host: str = "127.0.0.1") -> bool:
     """Возвращает True, если порт свободен на хосте."""
@@ -29,10 +31,10 @@ def validate_port(port_str: str) -> tuple[bool, str]:
     try:
         port = int(port_str)
     except ValueError:
-        return False, "Порт должен быть числом"
+        return False, t("port.not_number")
     if not (1 <= port <= 65535):
-        return False, "Порт должен быть в диапазоне 1–65535"
+        return False, t("port.out_of_range")
     if not is_port_free(port):
-        return False, f"Порт {port} уже занят"
+        return False, t("port.busy", port=port)
     return True, ""
 
