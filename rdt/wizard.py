@@ -38,7 +38,7 @@ def run_wizard(
     # ── 2. Credentials ───────────────────────────────────────────────────────
     if preset.default_env and not hardcore:
         use_default = questionary.confirm(
-            f"Использовать стандартные credentials (rambo / rambo_password)?",
+            f"Использовать стандартные credentials?",
             default=True,
         ).ask()
         answers["use_default_creds"] = use_default
@@ -98,19 +98,22 @@ def _needs_volume(preset: ServicePreset) -> bool:
 
 
 def _ask_volume(preset: ServicePreset) -> str:
-    default_named = f"rdt_{preset.name}_data"
+    default_named = f"{preset.name}_data"
     choice = questionary.select(
         "Хранилище данных (volume):",
         choices=[
             questionary.Choice(f"Именованный volume ({default_named})", value="named"),
             questionary.Choice("Локальная папка (./data/<service>)", value="local"),
+            questionary.Choice("Ввести вручную", value="custom"),
         ],
     ).ask()
 
     if choice == "named":
         return default_named
-    else:
+    elif choice == "local":
         return f"./data/{preset.name}"
+    else:
+        return questionary.text("Введите путь или имя volume:").ask() or default_named
 
 
 def _ask_depends_on(existing_services: list[str]) -> list[str]:

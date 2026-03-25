@@ -12,7 +12,7 @@ class DatabaseStrategy(BaseStrategy):
 
     def _enrich(self, service: dict[str, Any]) -> None:
         # --- Volumes ---
-        volume_source = self.answers.get("volume_source", f"rdt_{self.preset.name}_data")
+        volume_source = self.answers.get("volume_source", f"{self.preset.name}_data")
         if self.preset.volumes:
             rendered_volumes = []
             for v in self.preset.volumes:

@@ -2,16 +2,63 @@
 Управление .env и .env.example файлами.
 """
 from __future__ import annotations
-import os
+import re
 import secrets
 import string
 from pathlib import Path
 
-DEFAULT_USER = "rambo"
-DEFAULT_PASSWORD = "rambo_password"
+# Regex для извлечения имён переменных из ${VAR_NAME} в любом контексте
+_VAR_PATTERN = re.compile(r'\$\{([^}]+)\}')
 
-# Переменные, которые считаются секретами (выносятся в .env)
+# Переменные, которые считаются секретами
 _PASSWORD_KEYS = {"PASSWORD", "SECRET", "PASS", "KEY", "TOKEN"}
+
+# Стандартные credentials для каждого сервиса
+SERVICE_DEFAULTS: dict[str, str] = {
+    # PostgreSQL
+    "POSTGRES_USER": "postgres",
+    "POSTGRES_PASSWORD": "postgres",
+    "POSTGRES_DB": "postgres",
+    # MySQL
+    "MYSQL_ROOT_PASSWORD": "root",
+    "MYSQL_USER": "mysql",
+    "MYSQL_PASSWORD": "mysql",
+    "MYSQL_DATABASE": "mysql",
+    # MariaDB
+    "MARIADB_ROOT_PASSWORD": "root",
+    "MARIADB_USER": "mariadb",
+    "MARIADB_PASSWORD": "mariadb",
+    "MARIADB_DATABASE": "mariadb",
+    # MS SQL (должен соответствовать политике сложности)
+    "MSSQL_SA_PASSWORD": "Sa_Password1!",
+    # Oracle
+    "ORACLE_PASSWORD": "oracle",
+    "ORACLE_APP_USER": "app",
+    "ORACLE_APP_PASSWORD": "oracle",
+    # MongoDB
+    "MONGO_USER": "mongo",
+    "MONGO_PASSWORD": "mongo",
+    "MONGO_DB": "mongo",
+    # InfluxDB
+    "INFLUXDB_USER": "influx",
+    "INFLUXDB_PASSWORD": "influx",
+    # Elasticsearch
+    "ELASTIC_PASSWORD": "elastic",
+    # OpenSearch (должен быть сложным)
+    "OPENSEARCH_PASSWORD": "0penSearch!",
+    # RabbitMQ
+    "RABBITMQ_USER": "guest",
+    "RABBITMQ_PASSWORD": "guest",
+    # Keycloak
+    "KEYCLOAK_ADMIN": "admin",
+    "KEYCLOAK_ADMIN_PASSWORD": "admin",
+    # Grafana
+    "GRAFANA_USER": "admin",
+    "GRAFANA_PASSWORD": "admin",
+    # pgAdmin
+    "PGADMIN_EMAIL": "admin@pgadmin.local",
+    "PGADMIN_PASSWORD": "admin",
+}
 
 
 def is_secret_key(key: str) -> bool:
@@ -23,26 +70,38 @@ def generate_password(length: int = 24) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def _fallback_value(var_name: str) -> str:
+    """Запасное значение если переменной нет в SERVICE_DEFAULTS."""
+    u = var_name.upper()
+    if is_secret_key(var_name):
+        return "password"
+    if "USER" in u or "ADMIN" in u:
+        return "admin"
+    if "EMAIL" in u:
+        return "admin@example.local"
+    if "DB" in u or "DATABASE" in u or "BUCKET" in u:
+        return "app_db"
+    return "app"
+
+
 def get_env_values(preset_env: dict[str, str], hardcore: bool) -> dict[str, str]:
     """
     Возвращает конкретные значения для .env переменных.
+    Использует regex для безопасного извлечения имён переменных из любого контекста.
     hardcore=True → генерировать уникальные пароли.
     """
     result: dict[str, str] = {}
-    for key, placeholder in preset_env.items():
-        if "${" not in str(placeholder):
-            continue
-        var_name = str(placeholder).strip("${}").strip()
-        if is_secret_key(var_name):
-            result[var_name] = generate_password() if hardcore else DEFAULT_PASSWORD
-        elif "USER" in var_name.upper():
-            result[var_name] = DEFAULT_USER
-        elif "EMAIL" in var_name.upper():
-            result[var_name] = "admin@rambo.local"
-        elif "DB" in var_name.upper() or "DATABASE" in var_name.upper():
-            result[var_name] = "rambo_db"
-        else:
-            result[var_name] = "rambo"
+    for placeholder in preset_env.values():
+        for var_name in _VAR_PATTERN.findall(str(placeholder)):
+            if var_name in result:
+                continue
+            if hardcore:
+                result[var_name] = (
+                    generate_password() if is_secret_key(var_name)
+                    else SERVICE_DEFAULTS.get(var_name, _fallback_value(var_name))
+                )
+            else:
+                result[var_name] = SERVICE_DEFAULTS.get(var_name, _fallback_value(var_name))
     return result
 
 

@@ -11,7 +11,7 @@ class MonitoringStrategy(BaseStrategy):
     """Стратегия для мониторинга: volumes + healthcheck + config-маппинги."""
 
     def _enrich(self, service: dict[str, Any]) -> None:
-        volume_source = self.answers.get("volume_source", f"rdt_{self.preset.name}_data")
+        volume_source = self.answers.get("volume_source", f"{self.preset.name}_data")
 
         rendered_volumes = []
         for v in self.preset.volumes:
