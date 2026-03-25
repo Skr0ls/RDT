@@ -1,0 +1,44 @@
+# === {{ preset.display_name }} ===
+# Сгенерировано RDT. Категория: {{ preset.category }}
+{{ container_name }}:
+  image: {{ preset.image }}
+  container_name: {{ container_name }}
+  restart: unless-stopped
+  ports:
+    - "{{ port }}:{{ preset.container_port }}"
+{% if environment %}
+  environment:
+{% for key, value in environment.items() %}
+    {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% if volumes %}
+  volumes:
+{% for vol in volumes %}
+    - {{ vol }}
+{% endfor %}
+{% endif %}
+{% if healthcheck %}
+  healthcheck:
+    test: {{ healthcheck.test | tojson }}
+    interval: {{ healthcheck.interval }}
+    timeout: {{ healthcheck.timeout }}
+    retries: {{ healthcheck.retries }}
+{% endif %}
+{% if deploy_limits %}
+  deploy:
+    resources:
+      limits:
+        cpus: "{{ deploy_limits.cpus }}"
+        memory: {{ deploy_limits.memory }}
+{% endif %}
+{% if depends_on %}
+  depends_on:
+{% for dep in depends_on %}
+    {{ dep }}:
+      condition: service_healthy
+{% endfor %}
+{% endif %}
+  networks:
+    - rambo-net
+
