@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Annotated, Optional
 
+import questionary
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -17,19 +18,67 @@ from rdt.presets.catalog import ALL_PRESETS, ServicePreset
 from rdt.strategies.factory import get_strategy
 from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services
 from rdt.env_manager import get_env_values, write_env, write_env_example
-from rdt.wizard import run_wizard
+from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
 
 app = typer.Typer(
     name="rdt",
     help="[bold cyan]Rambo Docker Tools[/] — генератор docker-compose.yml",
     rich_markup_mode="rich",
-    no_args_is_help=True,
 )
 console = Console()
 
 COMPOSE_FILE = Path("docker-compose.yml")
 ENV_FILE = Path(".env")
 ENV_EXAMPLE_FILE = Path(".env.example")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Callback — запускает интерактивное меню при rdt без аргументов
+# ─────────────────────────────────────────────────────────────────────────────
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """[bold cyan]Rambo Docker Tools[/] — генератор docker-compose.yml
+
+    Запустите [green]rdt[/] без аргументов для интерактивного меню
+    или используйте подкоманды напрямую.
+    """
+    if ctx.invoked_subcommand is None:
+        _run_interactive()
+
+
+def _run_interactive() -> None:
+    """Запустить главное интерактивное меню."""
+    while True:
+        action = run_main_menu()
+
+        if action == "exit":
+            raise typer.Exit(0)
+
+        elif action == "list":
+            list_presets()
+
+        elif action == "init":
+            try:
+                init()
+            except SystemExit:
+                pass
+
+        elif action == "up":
+            up()
+            return
+
+        elif action == "add":
+            service_name = ask_service_choice()
+            if service_name:
+                try:
+                    add(service=service_name)
+                except SystemExit:
+                    pass
+
+        console.print()
+        cont = questionary.confirm("Сделать что-то ещё?", default=False).ask()
+        if not cont:
+            break
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -66,8 +115,27 @@ def add(
     service: Annotated[str, typer.Argument(help="Имя сервиса (например: postgres, redis, kafka)")],
     file: Annotated[Path, typer.Option("--file", "-f", help="Путь к docker-compose.yml")] = COMPOSE_FILE,
     hardcore: Annotated[bool, typer.Option("--hardcore", help="Генерировать уникальные пароли")] = False,
+    # ── Режим без мастера (для скриптинга) ───────────────────────────────────
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Не запускать мастер, использовать значения по умолчанию")] = False,
+    port: Annotated[Optional[int], typer.Option("--port", "-p", help="Внешний порт сервиса")] = None,
+    volume: Annotated[Optional[str], typer.Option("--volume", help="Volume или путь для данных (например: ./data/pg)")] = None,
+    depends_on: Annotated[Optional[list[str]], typer.Option("--depends-on", help="Зависимость (можно указать несколько раз)")] = None,
 ) -> None:
-    """Добавить сервис в docker-compose.yml через интерактивный мастер."""
+    """Добавить сервис в docker-compose.yml.
+
+    По умолчанию запускает интерактивный мастер настройки.
+    С флагом [green]--yes[/] (-y) пропускает все вопросы и использует значения по умолчанию.
+
+    [bold]Примеры (скрипт-режим):[/]
+
+      rdt add postgres --yes
+
+      rdt add postgres --yes --port 5433 --volume ./data/pg
+
+      rdt add redis --yes --depends-on rdt-postgres --depends-on rdt-rabbitmq
+
+      rdt add postgres --hardcore --yes
+    """
     service = service.lower()
     preset = ALL_PRESETS.get(service)
     if preset is None:
@@ -85,13 +153,25 @@ def add(
     existing = get_existing_services(data)
 
     # Проверить что сервис не добавлен дважды
-    container_name = f"rdt-{preset.name}"
+    container_name = preset.name
     if container_name in existing:
         console.print(f"[yellow]⚠  Сервис [bold]{container_name}[/] уже присутствует в {file}[/]")
         raise typer.Exit(1)
 
-    # Запустить wizard
-    answers = run_wizard(preset, existing, hardcore=hardcore)
+    # Режим с мастером или без
+    script_mode = yes or port is not None or volume is not None or depends_on is not None
+    if script_mode:
+        console.print(f"\n[bold cyan]⚙  Добавление сервиса: {preset.display_name}[/] [dim](скрипт-режим)[/]\n")
+        answers = build_script_answers(
+            preset=preset,
+            port=port,
+            volume=volume,
+            depends_on=depends_on or [],
+            hardcore=hardcore,
+            existing_services=existing,
+        )
+    else:
+        answers = run_wizard(preset, existing, hardcore=hardcore)
 
     # Получить значения переменных окружения
     env_values = get_env_values(preset.default_env, hardcore=hardcore or not answers.get("use_default_creds", True))

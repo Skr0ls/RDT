@@ -6,6 +6,7 @@ from typing import Any
 
 import questionary
 from rich.console import Console
+from rich.panel import Panel
 
 from rdt.presets.catalog import ServicePreset, CATEGORY_RELATIONAL, CATEGORY_NOSQL
 from rdt.port_utils import is_port_free, validate_port
@@ -120,7 +121,7 @@ def _ask_depends_on(existing_services: list[str]) -> list[str]:
     if not existing_services:
         return []
     choices = questionary.checkbox(
-        "Зависимости (depends_on, с условием service_healthy):",
+        "Зависимости (depends_on). Отметьте пробелом, Enter — пропустить:",
         choices=existing_services,
     ).ask()
     return choices or []
@@ -160,6 +161,106 @@ def _ask_smart_mapping(
         if selected != "— пропустить —":
             answers["parent_service"] = selected
             answers = apply_smart_mapping(service_name, existing_services, answers)
+
+    return answers
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Главное интерактивное меню (запускается при rdt без аргументов)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_main_menu() -> str:
+    """
+    Показать главное интерактивное меню.
+    Возвращает строку-ключ выбранного действия.
+    """
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]🐳  Rambo Docker Tools[/]\n"
+        "[dim]Интерактивный генератор docker-compose.yml[/]",
+        border_style="cyan",
+        padding=(0, 2),
+    ))
+    console.print()
+
+    choice = questionary.select(
+        "Что хотите сделать?",
+        choices=[
+            questionary.Choice("📦  Добавить сервис",                        value="add"),
+            questionary.Choice("🗂   Инициализировать проект (rdt init)",    value="init"),
+            questionary.Choice("📋  Показать все доступные сервисы",         value="list"),
+            questionary.Choice("🚀  Запустить контейнеры (docker compose up)", value="up"),
+            questionary.Choice("❌  Выход",                                   value="exit"),
+        ],
+        use_indicator=True,
+    ).ask()
+
+    return choice or "exit"
+
+
+def ask_service_choice() -> str | None:
+    """
+    Показать каталог сервисов по категориям и вернуть выбранное имя сервиса
+    (или None если пользователь выбрал «Назад»).
+    """
+    from rdt.presets.catalog import ALL_PRESETS
+
+    categories: dict[str, list[ServicePreset]] = {}
+    for preset in ALL_PRESETS.values():
+        categories.setdefault(preset.category, []).append(preset)
+
+    choices: list = []
+    for category, presets in categories.items():
+        choices.append(questionary.Separator(f"── {category} ──"))
+        for p in presets:
+            choices.append(questionary.Choice(
+                f"{p.display_name}  (порт {p.default_port})",
+                value=p.name,
+            ))
+
+    choices.append(questionary.Separator("─" * 36))
+    choices.append(questionary.Choice("← Назад в меню", value=None))
+
+    selected = questionary.select(
+        "Выберите сервис для добавления:",
+        choices=choices,
+    ).ask()
+
+    return selected
+
+
+def build_script_answers(
+    preset: ServicePreset,
+    port: int | None,
+    volume: str | None,
+    depends_on: list[str],
+    hardcore: bool,
+    existing_services: list[str],
+) -> dict[str, Any]:
+    """
+    Сформировать словарь answers из CLI-флагов без интерактивного мастера.
+    Используется при запуске rdt add <service> --yes [--port X] [--volume Y] ...
+    """
+    answers: dict[str, Any] = {}
+
+    # Порт
+    answers["port"] = port if port is not None else preset.default_port
+
+    # Credentials
+    answers["use_default_creds"] = not hardcore
+
+    # Volume (только для сервисов с volumes)
+    if preset.volumes:
+        answers["volume_source"] = volume if volume is not None else f"{preset.name}_data"
+
+    # Зависимости
+    answers["depends_on"] = list(depends_on)
+
+    # Auto Smart Mapping — автоматически применяем первого найденного кандидата
+    candidates = get_candidate_parents(preset.name, existing_services)
+    if candidates:
+        answers["parent_service"] = candidates[0]
+        answers = apply_smart_mapping(preset.name, existing_services, answers)
 
     return answers
 

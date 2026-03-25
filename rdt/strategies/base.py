@@ -8,7 +8,7 @@ from typing import Any
 from rdt.presets.catalog import ServicePreset
 
 NETWORK_NAME = "rambo-net"
-CONTAINER_PREFIX = "rdt-"
+CONTAINER_PREFIX = ""
 DEFAULT_RESTART = "unless-stopped"
 
 

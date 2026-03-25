@@ -22,6 +22,7 @@ venv/
 env/
 ENV/
 .env
+.env.example
 .env.*
 !.env.example
 

@@ -351,7 +351,7 @@ KEYCLOAK = ServicePreset(
         "KEYCLOAK_ADMIN": "${KEYCLOAK_ADMIN}",
         "KEYCLOAK_ADMIN_PASSWORD": "${KEYCLOAK_ADMIN_PASSWORD}",
         "KC_DB": "postgres",
-        "KC_DB_URL": "jdbc:postgresql://rdt-postgres:5432/${POSTGRES_DB}",
+        "KC_DB_URL": "jdbc:postgresql://postgres:5432/${POSTGRES_DB}",
         "KC_DB_USERNAME": "${POSTGRES_USER}",
         "KC_DB_PASSWORD": "${POSTGRES_PASSWORD}",
         "KC_HOSTNAME": "localhost",
@@ -457,7 +457,7 @@ PHPMYADMIN = ServicePreset(
     default_port=5051,
     container_port=80,
     default_env={
-        "PMA_HOST": "rdt-mysql",
+        "PMA_HOST": "mysql",
         "PMA_PORT": "3306",
         "MYSQL_ROOT_PASSWORD": "${MYSQL_ROOT_PASSWORD}",
     },
@@ -476,8 +476,8 @@ KAFKA_UI = ServicePreset(
     default_port=8090,
     container_port=8080,
     default_env={
-        "KAFKA_CLUSTERS_0_NAME": "rdt-kafka",
-        "KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS": "rdt-kafka:9092",
+        "KAFKA_CLUSTERS_0_NAME": "kafka",
+        "KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS": "kafka:9092",
     },
     volumes=[],
     healthcheck=None,
@@ -496,7 +496,7 @@ MONGO_EXPRESS = ServicePreset(
     default_env={
         "ME_CONFIG_MONGODB_ADMINUSERNAME": "${MONGO_USER}",
         "ME_CONFIG_MONGODB_ADMINPASSWORD": "${MONGO_PASSWORD}",
-        "ME_CONFIG_MONGODB_URL": "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@rdt-mongodb:27017/",
+        "ME_CONFIG_MONGODB_URL": "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/",
         "ME_CONFIG_BASICAUTH": "false",
     },
     volumes=[],
