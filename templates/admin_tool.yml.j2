@@ -23,7 +23,7 @@
   depends_on:
 {% for dep in depends_on %}
     {{ dep }}:
-      condition: service_healthy
+      condition: {{ "service_healthy" if dep in services_with_healthcheck else "service_started" }}
 {% endfor %}
 {% endif %}
   networks:
