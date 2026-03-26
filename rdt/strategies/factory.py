@@ -9,6 +9,7 @@ from rdt.strategies.base import BaseStrategy
 from rdt.strategies.database import DatabaseStrategy
 from rdt.strategies.admin_tool import AdminToolStrategy
 from rdt.strategies.monitoring import MonitoringStrategy
+from rdt.strategies.web_server import WebServerStrategy
 
 
 class _FallbackStrategy(BaseStrategy):
@@ -22,6 +23,7 @@ def get_strategy(preset: ServicePreset, answers: dict[str, Any]) -> BaseStrategy
         "database": DatabaseStrategy,
         "admin_tool": AdminToolStrategy,
         "monitoring": MonitoringStrategy,
+        "web_server": WebServerStrategy,
         "base": _FallbackStrategy,
     }
     cls = mapping.get(preset.strategy, _FallbackStrategy)

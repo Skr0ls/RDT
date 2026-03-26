@@ -124,6 +124,24 @@
   "lang.changed": "[green]✓[/] Language changed to: [bold]{lang}[/]",
   "lang.unknown": "[red]✗[/] Unknown language: [bold]{lang}[/]",
   "lang.available_list": "Available: {langs}",
-  "lang.missing_value": "[red]✗[/] Please specify a language code. Example: rdt lang set ru"
+  "lang.missing_value": "[red]✗[/] Please specify a language code. Example: rdt lang set ru",
+
+  "wizard.nginx_specific_header": "\n[bold cyan]⚙  Nginx configuration[/]\n",
+  "wizard.nginx_upstream": "Upstream backend (host:port, e.g. app:8000):",
+  "wizard.nginx_server_name": "Server name (e.g. localhost or example.com):",
+  "wizard.nginx_config_dir": "Directory for nginx.conf (relative to project root):",
+  "wizard.nginx_html_dir": "Directory for html files (relative to project root):",
+
+  "artifacts.header": "[bold]📄 Companion files:[/]",
+  "artifacts.created": "  [green]✓[/] Created: [bold]{path}[/]",
+  "artifacts.overwritten": "  [yellow]↺[/] Overwritten: [bold]{path}[/]",
+  "artifacts.skipped": "  [dim]─[/] Skipped (already exists): [dim]{path}[/]",
+  "artifacts.error": "  [red]✗[/] Error writing [bold]{path}[/]: {error}",
+
+  "wizard.apache_specific_header": "\n[bold cyan]⚙  Apache configuration[/]\n",
+  "wizard.apache_server_name": "Server name (e.g. localhost or example.com):",
+  "wizard.apache_config_dir": "Directory for Apache config (relative to project root):",
+  "wizard.apache_html_dir": "Directory for static files (relative to project root):",
+  "wizard.apache_src_dir": "Directory with PHP sources (relative to project root):"
 }
 

@@ -2,9 +2,14 @@
 Каталог всех доступных пресетов сервисов.
 Каждый пресет описывает конфигурацию docker-compose сервиса по умолчанию.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
 
+from rdt.artifacts import ArtifactDef, OverwritePolicy
+
+CATEGORY_WEB = "Web Servers"
 CATEGORY_RELATIONAL = "Relational DB"
 CATEGORY_NOSQL = "NoSQL / Cache"
 CATEGORY_SEARCH = "Search / Logging"
@@ -26,8 +31,9 @@ class ServicePreset:
     volumes: list[str] = field(default_factory=list)   # шаблоны volume-маппингов
     healthcheck: Optional[dict] = None
     deploy_limits: Optional[dict] = None               # CPU / RAM лимиты
-    strategy: str = "base"            # base | database | admin_tool | monitoring
+    strategy: str = "base"            # base | database | admin_tool | monitoring | web_server
     depends_on_category: Optional[str] = None          # для Smart Mapping
+    artifacts: list[ArtifactDef] = field(default_factory=list)  # companion-файлы сервиса
 
 
 # ---------------------------------------------------------------------------
@@ -507,10 +513,121 @@ MONGO_EXPRESS = ServicePreset(
 )
 
 # ---------------------------------------------------------------------------
+# Web Servers
+# ---------------------------------------------------------------------------
+
+NGINX_PROXY = ServicePreset(
+    name="nginx-proxy",
+    display_name="Nginx (Reverse Proxy)",
+    category=CATEGORY_WEB,
+    image="nginx:stable-alpine",
+    default_port=80,
+    container_port=80,
+    default_env={},
+    volumes=[],
+    healthcheck=None,          # healthcheck задаётся в WebServerStrategy
+    deploy_limits={"cpus": "0.5", "memory": "128M"},
+    strategy="web_server",
+    artifacts=[
+        ArtifactDef(
+            relative_path="nginx/nginx.conf",
+            source_template="nginx/nginx-proxy.conf.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+)
+
+NGINX_STATIC = ServicePreset(
+    name="nginx-static",
+    display_name="Nginx (Static Files Server)",
+    category=CATEGORY_WEB,
+    image="nginx:stable-alpine",
+    default_port=80,
+    container_port=80,
+    default_env={},
+    volumes=[],
+    healthcheck=None,
+    deploy_limits={"cpus": "0.5", "memory": "128M"},
+    strategy="web_server",
+    artifacts=[
+        ArtifactDef(
+            relative_path="nginx/nginx.conf",
+            source_template="nginx/nginx-static.conf.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+)
+
+NGINX_SPA = ServicePreset(
+    name="nginx-spa",
+    display_name="Nginx (SPA Hosting)",
+    category=CATEGORY_WEB,
+    image="nginx:stable-alpine",
+    default_port=80,
+    container_port=80,
+    default_env={},
+    volumes=[],
+    healthcheck=None,
+    deploy_limits={"cpus": "0.5", "memory": "128M"},
+    strategy="web_server",
+    artifacts=[
+        ArtifactDef(
+            relative_path="nginx/nginx.conf",
+            source_template="nginx/nginx-spa.conf.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+)
+
+APACHE_STATIC = ServicePreset(
+    name="apache-static",
+    display_name="Apache (Static Files Server)",
+    category=CATEGORY_WEB,
+    image="httpd:alpine",
+    default_port=80,
+    container_port=80,
+    default_env={},
+    volumes=[],
+    healthcheck=None,          # healthcheck задаётся в WebServerStrategy
+    deploy_limits={"cpus": "0.5", "memory": "128M"},
+    strategy="web_server",
+    artifacts=[
+        ArtifactDef(
+            relative_path="apache/httpd.conf",
+            source_template="apache/httpd-static.conf.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+)
+
+APACHE_PHP = ServicePreset(
+    name="apache-php",
+    display_name="Apache + PHP (LAMP)",
+    category=CATEGORY_WEB,
+    image="php:apache",
+    default_port=80,
+    container_port=80,
+    default_env={},
+    volumes=[],
+    healthcheck=None,
+    deploy_limits={"cpus": "1.0", "memory": "256M"},
+    strategy="web_server",
+    artifacts=[
+        ArtifactDef(
+            relative_path="apache/vhost.conf",
+            source_template="apache/vhost-php.conf.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+)
+
+# ---------------------------------------------------------------------------
 # Реестр всех пресетов
 # ---------------------------------------------------------------------------
 ALL_PRESETS: dict[str, ServicePreset] = {
     p.name: p for p in [
+        NGINX_PROXY, NGINX_STATIC, NGINX_SPA,
+        APACHE_STATIC, APACHE_PHP,
         POSTGRES, MYSQL, MARIADB, MSSQL, ORACLE,
         MONGODB, REDIS, VALKEY, CASSANDRA, INFLUXDB,
         ELASTICSEARCH, OPENSEARCH,

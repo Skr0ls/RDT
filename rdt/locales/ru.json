@@ -124,6 +124,24 @@
   "lang.changed": "[green]✓[/] Язык изменён на: [bold]{lang}[/]",
   "lang.unknown": "[red]✗[/] Неизвестный язык: [bold]{lang}[/]",
   "lang.available_list": "Доступные: {langs}",
-  "lang.missing_value": "[red]✗[/] Укажите код языка. Пример: rdt lang set en"
+  "lang.missing_value": "[red]✗[/] Укажите код языка. Пример: rdt lang set en",
+
+  "wizard.nginx_specific_header": "\n[bold cyan]⚙  Настройка конфигурации nginx[/]\n",
+  "wizard.nginx_upstream": "Upstream backend (host:port, например app:8000):",
+  "wizard.nginx_server_name": "Server name (например localhost или example.com):",
+  "wizard.nginx_config_dir": "Директория для nginx.conf (относительно проекта):",
+  "wizard.nginx_html_dir": "Директория с html-файлами (относительно проекта):",
+
+  "artifacts.header": "[bold]📄 Companion-файлы:[/]",
+  "artifacts.created": "  [green]✓[/] Создан: [bold]{path}[/]",
+  "artifacts.overwritten": "  [yellow]↺[/] Перезаписан: [bold]{path}[/]",
+  "artifacts.skipped": "  [dim]─[/] Пропущен (уже существует): [dim]{path}[/]",
+  "artifacts.error": "  [red]✗[/] Ошибка при создании [bold]{path}[/]: {error}",
+
+  "wizard.apache_specific_header": "\n[bold cyan]⚙  Настройка конфигурации Apache[/]\n",
+  "wizard.apache_server_name": "Server name (например localhost или example.com):",
+  "wizard.apache_config_dir": "Директория для конфига Apache (относительно проекта):",
+  "wizard.apache_html_dir": "Директория со статическими файлами (относительно проекта):",
+  "wizard.apache_src_dir": "Директория с PHP-исходниками (относительно проекта):"
 }
 
