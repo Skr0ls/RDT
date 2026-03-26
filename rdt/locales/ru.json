@@ -68,6 +68,7 @@
   "menu.up": "🚀  Запустить контейнеры (docker compose up)",
   "menu.check": "🔍  Проверить конфиг (docker compose config)",
   "menu.lang": "🌐  Сменить язык",
+  "menu.help": "❓  Помощь (rdt --help)",
   "menu.exit": "❌  Выход",
   "menu.service_choice": "Выберите сервис для добавления:",
   "menu.back": "← Назад в меню",
