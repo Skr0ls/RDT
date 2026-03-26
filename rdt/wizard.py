@@ -26,12 +26,14 @@ def run_wizard(
     preset: ServicePreset,
     existing_services: list[str],
     hardcore: bool = False,
+    services_with_healthcheck: set[str] | None = None,
 ) -> dict[str, Any]:
     """
     Запустить интерактивный мастер для выбранного пресета.
     Возвращает словарь answers для передачи в стратегию.
     """
     answers: dict[str, Any] = {}
+    _svc_with_hc = services_with_healthcheck or set()
 
     console.print(t("wizard.configuring", name=preset.display_name))
 
@@ -72,7 +74,7 @@ def run_wizard(
 
     # ── 8. depends_on ────────────────────────────────────────────────────────
     if existing_services:
-        answers["depends_on"] = _ask_depends_on(existing_services)
+        answers["depends_on"] = _ask_depends_on(existing_services, _svc_with_hc)
     else:
         answers["depends_on"] = []
 
@@ -224,14 +226,22 @@ def _ask_volume(preset: ServicePreset) -> str:
         return questionary.text(t("wizard.volume_enter")).ask() or default_named
 
 
-def _ask_depends_on(existing_services: list[str]) -> list[str]:
+def _ask_depends_on(existing_services: list[str], services_with_healthcheck: set[str] | None = None) -> list[str]:
     if not existing_services:
         return []
-    choices = questionary.checkbox(
+    svc_with_hc = services_with_healthcheck or set()
+    choices = [
+        questionary.Choice(
+            title=f"{svc}  [healthcheck ✓]" if svc in svc_with_hc else svc,
+            value=svc,
+        )
+        for svc in existing_services
+    ]
+    selected = questionary.checkbox(
         t("wizard.depends_question"),
-        choices=existing_services,
+        choices=choices,
     ).ask()
-    return choices or []
+    return selected or []
 
 
 def _ask_smart_mapping(

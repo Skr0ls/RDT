@@ -60,8 +60,12 @@ class BaseStrategy(ABC):
 
         # depends_on
         if deps := self.answers.get("depends_on"):
+            svc_with_hc: set[str] = self.answers.get("services_with_healthcheck", set())
             service["depends_on"] = {
-                dep: {"condition": "service_healthy"} for dep in deps
+                dep: {
+                    "condition": "service_healthy" if dep in svc_with_hc else "service_started"
+                }
+                for dep in deps
             }
 
         # Лимиты ресурсов

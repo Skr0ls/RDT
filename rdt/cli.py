@@ -17,7 +17,7 @@ from rich import box
 from rdt.presets.catalog import ALL_PRESETS, ServicePreset
 from rdt.strategies.base import NETWORK_NAME
 from rdt.strategies.factory import get_strategy
-from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services
+from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services, get_services_with_healthcheck
 from rdt.env_manager import get_env_values, write_env, write_env_example
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
 from rdt.i18n import t
@@ -154,9 +154,11 @@ def add(
     if file.exists():
         data = load_compose(file)
         existing = get_existing_services(data)
+        svc_with_hc = get_services_with_healthcheck(data)
     else:
         data = None
         existing = []
+        svc_with_hc = set()
 
     # Проверить что сервис не добавлен дважды (ключ в services = preset.name)
     svc_key = preset.name
@@ -189,7 +191,10 @@ def add(
             hc_start_period=hc_start_period,
         )
     else:
-        answers = run_wizard(preset, existing, hardcore=hardcore)
+        answers = run_wizard(preset, existing, hardcore=hardcore, services_with_healthcheck=svc_with_hc)
+
+    # Передаём в стратегию информацию о том, у каких сервисов есть healthcheck
+    answers["services_with_healthcheck"] = svc_with_hc
 
     # Создать базовый файл если не существует — с учётом выбранной сети
     if data is None:

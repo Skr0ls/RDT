@@ -138,6 +138,15 @@ def get_existing_services(data: CommentedMap) -> list[str]:
     return list(data.get("services", {}).keys())
 
 
+def get_services_with_healthcheck(data: CommentedMap) -> set[str]:
+    """Вернуть множество имён сервисов, у которых задан healthcheck."""
+    result: set[str] = set()
+    for svc_name, svc_def in (data.get("services") or {}).items():
+        if svc_def and "healthcheck" in svc_def:
+            result.add(svc_name)
+    return result
+
+
 def _dict_to_commented(d: Any) -> Any:
     """Рекурсивно конвертировать dict → CommentedMap."""
     if isinstance(d, dict):
