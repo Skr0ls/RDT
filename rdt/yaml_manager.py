@@ -39,9 +39,11 @@ def load_compose(path: Path) -> CommentedMap:
 
 
 def save_compose(path: Path, data: CommentedMap) -> None:
-    """Сохранить docker-compose.yml."""
+    """Сохранить docker-compose.yml. Создаёт родительскую директорию при необходимости."""
     import re
     import io
+    # Гарантировать существование родительской директории (для --file infra/docker-compose.yml)
+    path.parent.mkdir(parents=True, exist_ok=True)
     y = _make_yaml()
     buf = io.StringIO()
     y.dump(data, buf)

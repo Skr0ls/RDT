@@ -20,7 +20,7 @@ from rdt.strategies.factory import get_strategy
 from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services, get_services_with_healthcheck
 from rdt.env_manager import get_env_values, write_env, write_env_example
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
-from rdt.artifacts import ArtifactPipeline
+from rdt.artifacts import ArtifactContext, ArtifactPipeline, PreflightIssue
 from rdt.i18n import t
 import rdt.i18n as i18n
 
@@ -32,8 +32,17 @@ app = typer.Typer(
 console = Console()
 
 COMPOSE_FILE = Path("docker-compose.yml")
-ENV_FILE = Path(".env")
-ENV_EXAMPLE_FILE = Path(".env.example")
+
+
+def _resolve_project_root(file: Path) -> Path:
+    """
+    Единое правило определения project root:
+    - если --file задан с директорией — root = директория compose-файла
+    - иначе root = текущая рабочая директория
+
+    Все выходные файлы (.env, .env.example, artifacts) строятся от этого корня.
+    """
+    return file.parent.resolve()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -122,17 +131,21 @@ def init(
         console.print(t("msg.file_exists", file=file))
         raise typer.Exit(1)
 
+    project_root = _resolve_project_root(file)
+    env_file = project_root / ".env"
+    env_example_file = project_root / ".env.example"
+
     data = make_base_compose()
     save_compose(file, data)
     console.print(t("msg.compose_created", file=file))
 
     # Инициализировать .env и .env.example если не существуют
-    if not ENV_FILE.exists():
-        ENV_FILE.touch()
-        console.print(t("msg.env_created", file=ENV_FILE))
-    if not ENV_EXAMPLE_FILE.exists():
-        ENV_EXAMPLE_FILE.touch()
-        console.print(t("msg.env_created", file=ENV_EXAMPLE_FILE))
+    if not env_file.exists():
+        env_file.touch()
+        console.print(t("msg.env_created", file=env_file))
+    if not env_example_file.exists():
+        env_example_file.touch()
+        console.print(t("msg.env_created", file=env_example_file))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -154,6 +167,7 @@ def add(
     hc_timeout: Annotated[Optional[str], typer.Option("--hc-timeout", help=t("cmd.add.opt_hc_timeout"))] = None,
     hc_retries: Annotated[Optional[int], typer.Option("--hc-retries", help=t("cmd.add.opt_hc_retries"))] = None,
     hc_start_period: Annotated[Optional[str], typer.Option("--hc-start-period", help=t("cmd.add.opt_hc_start_period"))] = None,
+    set_params: Annotated[Optional[list[str]], typer.Option("--set", help=t("cmd.add.opt_set"))] = None,
 ) -> None:
     service = service.lower()
     preset = ALL_PRESETS.get(service)
@@ -177,6 +191,17 @@ def add(
     if svc_key in existing:
         console.print(t("msg.file_exists", file=f"{svc_key} in {file}"))
         raise typer.Exit(1)
+
+    # ── Парсинг --set key=value ──────────────────────────────────────────────
+    # Позволяет переопределить любой ответ мастера без интерактивного режима.
+    # Пример: --set nginx_upstream=app:8080 --set nginx_server_name=example.com
+    set_overrides: dict[str, str] = {}
+    for param in (set_params or []):
+        if "=" not in param:
+            console.print(t("msg.set_invalid_format", param=param))
+            raise typer.Exit(1)
+        k, v = param.split("=", 1)
+        set_overrides[k.strip()] = v.strip()
 
     # Режим с мастером или без
     has_script_flags = (
@@ -205,8 +230,20 @@ def add(
     else:
         answers = run_wizard(preset, existing, hardcore=hardcore, services_with_healthcheck=svc_with_hc)
 
+    # Применяем --set поверх ответов мастера/скрипта
+    if set_overrides:
+        answers.update(set_overrides)
+        if set_overrides:
+            console.print(t("msg.set_overrides_applied", count=len(set_overrides)))
+
     # Передаём в стратегию информацию о том, у каких сервисов есть healthcheck
     answers["services_with_healthcheck"] = svc_with_hc
+
+    # ── Единый project root ──────────────────────────────────────────────────
+    # Правило: root = директория compose-файла (работает как для default так и для --file)
+    project_root = _resolve_project_root(file)
+    env_file = project_root / ".env"
+    env_example_file = project_root / ".env.example"
 
     # Создать базовый файл если не существует — с учётом выбранной сети
     if data is None:
@@ -232,19 +269,43 @@ def add(
     data = inject_service(data, svc_key, service_def, network_config=net_cfg)
     save_compose(file, data)
 
-    # Обновить .env и .env.example
-    write_env(ENV_FILE, env_values)
-    write_env_example(ENV_EXAMPLE_FILE, env_values)
+    # Обновить .env и .env.example относительно project root
+    write_env(env_file, env_values)
+    write_env_example(env_example_file, env_values)
 
     console.print(t("msg.service_added", name=preset.display_name, file=file))
     if env_values:
-        console.print(t("msg.env_written", file=ENV_FILE))
+        console.print(t("msg.env_written", file=env_file))
 
-    # Генерация companion-артефактов (nginx.conf и подобные)
+    # ── Генерация companion-артефактов ───────────────────────────────────────
     if preset.artifacts:
-        pipeline = ArtifactPipeline(preset.artifacts, answers)
+        # Строим полный контекст для pipeline (M3: ArtifactContext)
+        artifact_ctx = ArtifactContext(
+            service_name=svc_key,
+            answers=answers,
+            env_values=env_values,
+            project_root=project_root,
+            compose_file=file.resolve(),
+            preset=preset,
+        )
+        pipeline = ArtifactPipeline(preset.artifacts, artifact_ctx)
+
+        # Preflight-проверка до фактической записи
+        issues = pipeline.preflight()
+        if issues:
+            console.print()
+            console.print(t("artifacts.preflight.header"))
+            for issue in issues:
+                console.print(t("artifacts.preflight.issue", path=issue.artifact_path, reason=issue.reason))
+            raise typer.Exit(1)
+
         results = pipeline.run()
         ArtifactPipeline.print_results(results, console)
+
+        # Фатальная ошибка если хотя бы один артефакт не сгенерирован
+        if ArtifactPipeline.has_errors(results):
+            console.print(t("artifacts.fatal_error"))
+            raise typer.Exit(1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
