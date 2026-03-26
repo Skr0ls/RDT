@@ -41,16 +41,19 @@ ENV_EXAMPLE_FILE = Path(".env.example")
 @app.callback(invoke_without_command=True, help=t("app.callback_help"))
 def main(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is None:
-        _run_interactive()
+        _run_interactive(ctx)
 
 
-def _run_interactive() -> None:
+def _run_interactive(ctx: typer.Context) -> None:
     """Запустить главное интерактивное меню."""
     while True:
         action = run_main_menu()
 
         if action == "exit":
             raise typer.Exit(0)
+
+        elif action == "help":
+            _show_help(ctx)
 
         elif action == "list":
             list_presets()
@@ -84,6 +87,11 @@ def _run_interactive() -> None:
         cont = questionary.confirm(t("msg.do_more"), default=False).ask()
         if not cont:
             break
+
+
+def _show_help(ctx: typer.Context) -> None:
+    """Вывести полную справку по командам RDT (аналог rdt --help)."""
+    console.print(ctx.get_help())
 
 
 def _change_language() -> None:
