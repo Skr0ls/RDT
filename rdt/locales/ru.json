@@ -24,6 +24,10 @@
 
   "cmd.list.help": "Показать все доступные пресеты по категориям.",
 
+  "cmd.check.help": "Валидировать docker-compose.yml через docker compose config.\n\nОбнаруживает ошибки синтаксиса YAML, неизвестные ключи и неверные ссылки\nещё до запуска [cyan]rdt up[/].",
+  "cmd.check.opt_file": "Путь к docker-compose.yml",
+  "cmd.check.opt_verbose": "Показать разрешённый конфиг при успешной проверке",
+
   "cmd.up.help": "Запустить docker compose up (прокси-команда).",
   "cmd.up.opt_file": "Путь к docker-compose.yml",
   "cmd.up.opt_detach": "Фоновый режим",
@@ -43,6 +47,9 @@
   "msg.env_written": "[green]✓[/] Переменные окружения записаны в [bold]{file}[/]",
   "msg.compose_not_found_run": "[red]✗[/] Файл [bold]{file}[/] не найден. Сначала выполните [cyan]rdt init[/]",
   "msg.running_cmd": "[cyan]▶[/] Выполняю: [bold]{cmd}[/]\n",
+  "msg.check_running": "[cyan]▶[/] Проверяю [bold]{file}[/] ...\n",
+  "msg.check_ok": "\n[green]✓[/] [bold]{file}[/] валиден — ошибок не найдено.",
+  "msg.check_fail": "\n[red]✗[/] [bold]{file}[/] содержит ошибки. Исправьте их перед запуском [cyan]rdt up[/].",
   "msg.do_more": "Сделать что-то ещё?",
 
   "table.title": "🐳 RDT — Доступные сервисы",
@@ -59,6 +66,7 @@
   "menu.init": "🗂   Инициализировать проект (rdt init)",
   "menu.list": "📋  Показать все доступные сервисы",
   "menu.up": "🚀  Запустить контейнеры (docker compose up)",
+  "menu.check": "🔍  Проверить конфиг (docker compose config)",
   "menu.lang": "🌐  Сменить язык",
   "menu.exit": "❌  Выход",
   "menu.service_choice": "Выберите сервис для добавления:",

@@ -24,6 +24,10 @@
 
   "cmd.list.help": "Show all available presets by category.",
 
+  "cmd.check.help": "Validate docker-compose.yml by running docker compose config.\n\nDetects YAML syntax errors, unknown keys, and invalid references\nbefore you run [cyan]rdt up[/].",
+  "cmd.check.opt_file": "Path to docker-compose.yml",
+  "cmd.check.opt_verbose": "Print the resolved compose config on success",
+
   "cmd.up.help": "Run docker compose up (proxy command).",
   "cmd.up.opt_file": "Path to docker-compose.yml",
   "cmd.up.opt_detach": "Detached mode",
@@ -43,6 +47,9 @@
   "msg.env_written": "[green]✓[/] Environment variables written to [bold]{file}[/]",
   "msg.compose_not_found_run": "[red]✗[/] File [bold]{file}[/] not found. Run [cyan]rdt init[/] first",
   "msg.running_cmd": "[cyan]▶[/] Running: [bold]{cmd}[/]\n",
+  "msg.check_running": "[cyan]▶[/] Validating [bold]{file}[/] ...\n",
+  "msg.check_ok": "\n[green]✓[/] [bold]{file}[/] is valid — no errors found.",
+  "msg.check_fail": "\n[red]✗[/] [bold]{file}[/] has errors. Fix them before running [cyan]rdt up[/].",
   "msg.do_more": "Do something else?",
 
   "table.title": "🐳 RDT — Available services",
@@ -59,6 +66,7 @@
   "menu.init": "🗂   Initialize project (rdt init)",
   "menu.list": "📋  Show all available services",
   "menu.up": "🚀  Start containers (docker compose up)",
+  "menu.check": "🔍  Check config (docker compose config)",
   "menu.lang": "🌐  Change language",
   "menu.exit": "❌  Exit",
   "menu.service_choice": "Select a service to add:",
