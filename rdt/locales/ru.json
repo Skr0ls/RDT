@@ -6,7 +6,7 @@
   "cmd.init.opt_file": "Путь к файлу",
   "cmd.init.opt_force": "Перезаписать если существует",
 
-  "cmd.add.help": "Добавить сервис в docker-compose.yml.\n\nПо умолчанию запускает интерактивный мастер настройки.\nС флагом [green]--yes[/] (-y) пропускает все вопросы и использует значения по умолчанию.\n\n[bold]Примеры (скрипт-режим):[/]\n\n  rdt add postgres --yes\n\n  rdt add postgres --yes --port 5433 --volume ./data/pg\n\n  rdt add redis --yes --depends-on rdt-postgres --depends-on rdt-rabbitmq\n\n  rdt add postgres --hardcore --yes",
+  "cmd.add.help": "Добавить сервис в docker-compose.yml.\n\nПо умолчанию запускает интерактивный мастер настройки.\nС флагом [green]--yes[/] (-y) пропускает все вопросы и использует значения по умолчанию.\nИспользуйте [green]--set key=value[/] для переопределения любого ответа без интерактива.\n\n[bold]Примеры (скрипт-режим):[/]\n\n  rdt add postgres --yes\n\n  rdt add postgres --yes --port 5433 --volume ./data/pg\n\n  rdt add redis --yes --depends-on rdt-postgres --depends-on rdt-rabbitmq\n\n  rdt add postgres --hardcore --yes\n\n[bold]Примеры (--set переопределения):[/]\n\n  rdt add nginx-proxy --set nginx_upstream=app:8080\n\n  rdt add nginx-proxy --set nginx_upstream=app:8080 --set nginx_server_name=example.com\n\n  rdt add logstash --set logstash_pipeline=beats-es --set logstash_es_host=elasticsearch:9200",
   "cmd.add.arg_service": "Имя сервиса (например: postgres, redis, kafka)",
   "cmd.add.opt_file": "Путь к docker-compose.yml",
   "cmd.add.opt_hardcore": "Генерировать уникальные пароли",
@@ -154,6 +154,32 @@
   "wizard.apache_server_name": "Server name (например localhost или example.com):",
   "wizard.apache_config_dir": "Директория для конфига Apache (относительно проекта):",
   "wizard.apache_html_dir": "Директория со статическими файлами (относительно проекта):",
-  "wizard.apache_src_dir": "Директория с PHP-исходниками (относительно проекта):"
+  "wizard.apache_src_dir": "Директория с PHP-исходниками (относительно проекта):",
+
+  "plan.header": "\n[bold]📋 Запланированные изменения:[/]",
+  "plan.compose_create": "  [cyan]✦[/] Создать [bold]{file}[/]",
+  "plan.compose_add_service": "  [cyan]✦[/] Добавить сервис [bold cyan]{name}[/] в [bold]{file}[/]",
+  "plan.env_write": "  [cyan]✦[/] Записать [bold]{file}[/]: {keys}",
+  "plan.artifact_create": "  [green]+[/] Создать: [bold]{path}[/]",
+  "plan.artifact_overwrite": "  [yellow]↺[/] Перезаписать: [bold]{path}[/]",
+  "plan.artifact_skip": "  [dim]─[/] Пропустить (уже существует): [dim]{path}[/]",
+
+  "wizard.logstash_specific_header": "\n[bold cyan]⚙  Настройка Logstash[/]\n",
+  "wizard.logstash_pipeline_mode": "Режим pipeline:",
+  "wizard.logstash_pipeline_stdout": "beats → stdout (отладочный вывод)",
+  "wizard.logstash_pipeline_es": "beats → Elasticsearch",
+  "wizard.logstash_es_host": "Хост Elasticsearch (host:port):",
+
+  "plan.scaffold_create": "  [cyan]📁[/] Создать директорию: [bold]{path}[/]",
+  "plan.scaffold_skip": "  [dim]─[/] Директория уже существует: [dim]{path}[/]",
+
+  "scaffold.header": "[bold]📁 Созданные директории:[/]",
+  "scaffold.created": "  [green]✓[/] Создана директория: [bold]{path}[/]",
+  "scaffold.already_exists": "  [dim]─[/] Уже существует: [dim]{path}[/]",
+  "scaffold.error": "  [red]✗[/] Ошибка при создании директории [bold]{path}[/]: {error}",
+
+  "bootstrap.header": "[bold yellow]💡 Подсказки по настройке:[/]",
+  "bootstrap.hint": "  [yellow]•[/] {message}",
+  "bootstrap.command": "    [dim]$[/] [green]{command}[/]"
 }
 

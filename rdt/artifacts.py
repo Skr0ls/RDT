@@ -67,6 +67,18 @@ class ArtifactContext:
     preset: Any = None
     """ServicePreset (Any — чтобы избежать circular import из presets/catalog.py)."""
 
+    smart_env: dict[str, Any] = field(default_factory=dict)
+    """Переменные окружения, установленные Smart Mapping (подмножество answers['smart_env'])."""
+
+    depends_on: list[str] = field(default_factory=list)
+    """Зависимости сервиса, установленные Smart Mapping (подмножество answers['depends_on'])."""
+
+    parent_service: str | None = None
+    """Имя родительского сервиса, если Smart Mapping обнаружил связанный сервис."""
+
+    service_def: dict[str, Any] | None = None
+    """Готовый словарь блока сервиса (результат strategy.build())."""
+
     def as_template_vars(self) -> dict[str, Any]:
         """
         Возвращает все переменные для Jinja2-рендера.
@@ -77,6 +89,11 @@ class ArtifactContext:
         base["project_root"] = str(self.project_root)
         base["compose_file"] = str(self.compose_file)
         base["env_values"] = self.env_values
+        base["smart_env"] = self.smart_env
+        base["depends_on"] = self.depends_on
+        base["parent_service"] = self.parent_service
+        if self.service_def is not None:
+            base["service_def"] = self.service_def
         if self.preset is not None:
             base["preset_name"] = self.preset.name
             base["preset_display_name"] = self.preset.display_name
@@ -378,4 +395,129 @@ class ArtifactPipeline:
     def has_errors(results: list[ArtifactResult]) -> bool:
         """Вернуть True если хотя бы один артефакт завершился с ошибкой."""
         return any(r.has_error for r in results)
+
+
+# ---------------------------------------------------------------------------
+# P2: Bootstrap Hint — подсказка для пользователя о ручных шагах
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BootstrapHint:
+    """
+    Подсказка о ручных шагах, которые нужно выполнить после добавления сервиса.
+
+    Используется для инструкций, которые нельзя автоматизировать
+    (например, запуск команды инициализации внутри контейнера).
+    Намеренно не выполняется автоматически — только отображается пользователю.
+    """
+
+    message: str
+    """Текст подсказки (что нужно сделать)."""
+
+    command: str | None = None
+    """Опциональная команда для отображения (только справочно, не выполняется RDT)."""
+
+
+# ---------------------------------------------------------------------------
+# P2: Directory Scaffolding — декларативное создание директорий
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DirectoryDef:
+    """
+    Описание директории, которую нужно создать при scaffolding.
+
+    Используется для объявления структуры проекта, которая должна существовать
+    ещё до того, как в неё будут записаны конкретные файлы (артефакты).
+    Например: logstash/pipeline/, logstash/config/.
+    """
+
+    relative_path: str
+    """Путь к директории относительно project_root."""
+
+
+@dataclass
+class ScaffoldPlan:
+    """Запланированное действие для одной директории (до создания)."""
+
+    directory: DirectoryDef
+    target: Path
+    action: Literal["create", "skip"]
+    """create — директория будет создана; skip — уже существует."""
+
+
+@dataclass
+class ScaffoldResult:
+    """Результат создания одной директории при scaffolding."""
+
+    path: Path
+    status: str  # "created" | "already_exists" | "error"
+    error: str | None = None
+
+    @property
+    def has_error(self) -> bool:
+        return self.status == "error"
+
+
+class ScaffoldPipeline:
+    """
+    Pipeline декларативного создания директорий.
+
+    Архитектура plan → apply:
+    1. plan()  — определить какие директории нужно создать (без записи)
+    2. apply() — создать директории по плану
+    3. run()   — ярлык: plan() → apply()
+    """
+
+    def __init__(self, directories: list[DirectoryDef], project_root: Path) -> None:
+        self.directories = directories
+        self.project_root = project_root
+
+    def plan(self) -> list[ScaffoldPlan]:
+        """Определить действие для каждой директории без фактического создания."""
+        plans: list[ScaffoldPlan] = []
+        for dir_def in self.directories:
+            target = self.project_root / dir_def.relative_path
+            action: Literal["create", "skip"] = "skip" if target.exists() else "create"
+            plans.append(ScaffoldPlan(directory=dir_def, target=target, action=action))
+        return plans
+
+    def apply(self, plans: list[ScaffoldPlan]) -> list[ScaffoldResult]:
+        """Выполнить план: создать директории, вернуть результаты."""
+        results: list[ScaffoldResult] = []
+        for plan in plans:
+            if plan.action == "skip":
+                results.append(ScaffoldResult(path=plan.target, status="already_exists"))
+            else:
+                try:
+                    plan.target.mkdir(parents=True, exist_ok=True)
+                    results.append(ScaffoldResult(path=plan.target, status="created"))
+                except Exception as exc:
+                    results.append(ScaffoldResult(path=plan.target, status="error", error=str(exc)))
+        return results
+
+    def run(self) -> list[ScaffoldResult]:
+        """Запустить pipeline: plan() → apply() → результаты."""
+        return self.apply(self.plan())
+
+    @staticmethod
+    def has_errors(results: list[ScaffoldResult]) -> bool:
+        """Вернуть True если хотя бы одна директория завершилась с ошибкой."""
+        return any(r.has_error for r in results)
+
+    @staticmethod
+    def print_results(results: list[ScaffoldResult], console: Any) -> None:
+        """Вывести понятный отчёт о scaffolding-операциях."""
+        if not results:
+            return
+        console.print()
+        console.print(t("scaffold.header"))
+        for r in results:
+            path_str = str(r.path)
+            if r.status == "created":
+                console.print(t("scaffold.created", path=path_str))
+            elif r.status == "already_exists":
+                console.print(t("scaffold.already_exists", path=path_str))
+            elif r.status == "error":
+                console.print(t("scaffold.error", path=path_str, error=r.error))
 

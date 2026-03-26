@@ -25,6 +25,7 @@ def apply_smart_mapping(
         "grafana": _grafana_mapping,
         "phpmyadmin": _phpmyadmin_mapping,
         "mongo-express": _mongo_express_mapping,
+        "logstash": _logstash_mapping,
     }
     handler = handlers.get(service_name)
     if handler:
@@ -105,6 +106,23 @@ def _mongo_express_mapping(existing: list[str], answers: dict) -> None:
         answers["depends_on"] = deps
 
 
+def _logstash_mapping(existing: list[str], answers: dict) -> None:
+    """Logstash → Elasticsearch/OpenSearch: ES_HOST + depends_on + pipeline mode default."""
+    es_services = [s for s in existing if "elasticsearch" in s or "opensearch" in s]
+    if es_services:
+        selected = answers.get("parent_service", es_services[0])
+        answers.setdefault("smart_env", {})
+        answers["smart_env"]["LOGSTASH_ES_HOST"] = f"{selected}:9200"
+        deps = answers.get("depends_on", [])
+        if selected not in deps:
+            deps.append(selected)
+        answers["depends_on"] = deps
+        answers["parent_service"] = selected
+        # Подсказать дефолтный режим pipeline (но не переопределять если уже задан)
+        answers.setdefault("logstash_pipeline", "beats-es")
+        answers.setdefault("logstash_es_host", f"{selected}:9200")
+
+
 def get_candidate_parents(service_name: str, existing_services: list[str]) -> list[str]:
     """Вернуть список кандидатов-родителей для smart mapping."""
     filters = {
@@ -113,6 +131,7 @@ def get_candidate_parents(service_name: str, existing_services: list[str]) -> li
         "grafana": lambda s: "prometheus" in s,
         "phpmyadmin": lambda s: "mysql" in s or "mariadb" in s,
         "mongo-express": lambda s: ("mongodb" in s or "mongo" in s) and "express" not in s,
+        "logstash": lambda s: "elasticsearch" in s or "opensearch" in s,
     }
     filt = filters.get(service_name)
     if filt:

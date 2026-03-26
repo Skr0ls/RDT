@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from rdt.artifacts import ArtifactDef, OverwritePolicy
+from rdt.artifacts import ArtifactDef, BootstrapHint, DirectoryDef, OverwritePolicy
 
 CATEGORY_WEB = "Web Servers"
 CATEGORY_RELATIONAL = "Relational DB"
@@ -34,6 +34,8 @@ class ServicePreset:
     strategy: str = "base"            # base | database | admin_tool | monitoring | web_server
     depends_on_category: Optional[str] = None          # для Smart Mapping
     artifacts: list[ArtifactDef] = field(default_factory=list)  # companion-файлы сервиса
+    scaffolds: list[DirectoryDef] = field(default_factory=list)  # директории для scaffolding
+    bootstrap_hints: list[BootstrapHint] = field(default_factory=list)  # подсказки после установки
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +293,63 @@ OPENSEARCH = ServicePreset(
     },
     deploy_limits={"cpus": "2.0", "memory": "1G"},
     strategy="database",
+)
+
+LOGSTASH = ServicePreset(
+    name="logstash",
+    display_name="Logstash",
+    category=CATEGORY_SEARCH,
+    image="docker.elastic.co/logstash/logstash:8.13.0",
+    default_port=5044,
+    container_port=5044,
+    default_env={
+        "LS_JAVA_OPTS": "-Xms512m -Xmx512m",
+        "PIPELINE_WORKERS": "2",
+    },
+    volumes=[
+        "./logstash/pipeline:/usr/share/logstash/pipeline:ro",
+        "./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro",
+        "logstash_data:/usr/share/logstash/data",
+    ],
+    healthcheck={
+        "test": ["CMD-SHELL", "curl -s http://localhost:9600/_node/stats | grep -q '\"status\":\"green\"'"],
+        "interval": "15s", "timeout": "10s", "retries": 5, "start_period": "60s",
+    },
+    deploy_limits={"cpus": "1.0", "memory": "1G"},
+    strategy="database",
+    depends_on_category=CATEGORY_SEARCH,
+    artifacts=[
+        ArtifactDef(
+            relative_path="logstash/pipeline/logstash.conf",
+            source_template="logstash/logstash-beats-stdout.conf.j2",
+            overwrite=OverwritePolicy.SKIP,
+            condition="logstash_pipeline_stdout",
+        ),
+        ArtifactDef(
+            relative_path="logstash/pipeline/logstash.conf",
+            source_template="logstash/logstash-beats-es.conf.j2",
+            overwrite=OverwritePolicy.SKIP,
+            condition="logstash_pipeline_es",
+        ),
+        ArtifactDef(
+            relative_path="logstash/config/logstash.yml",
+            source_template="logstash/logstash.yml.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+    scaffolds=[
+        DirectoryDef(relative_path="logstash/pipeline"),
+        DirectoryDef(relative_path="logstash/config"),
+    ],
+    bootstrap_hints=[
+        BootstrapHint(
+            message="Настройте Filebeat/Beats-агент для отправки данных на порт 5044 этого хоста.",
+            command="docker exec -it logstash curl -s http://localhost:9600/_node/stats | python -m json.tool",
+        ),
+        BootstrapHint(
+            message="Проверьте статус Logstash: убедитесь что pipeline активен и нет ошибок.",
+        ),
+    ],
 )
 
 # ---------------------------------------------------------------------------
@@ -630,7 +689,7 @@ ALL_PRESETS: dict[str, ServicePreset] = {
         APACHE_STATIC, APACHE_PHP,
         POSTGRES, MYSQL, MARIADB, MSSQL, ORACLE,
         MONGODB, REDIS, VALKEY, CASSANDRA, INFLUXDB,
-        ELASTICSEARCH, OPENSEARCH,
+        ELASTICSEARCH, OPENSEARCH, LOGSTASH,
         KAFKA_KRAFT, RABBITMQ,
         KEYCLOAK,
         PROMETHEUS, GRAFANA, ZOOKEEPER,

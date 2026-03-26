@@ -6,7 +6,7 @@
   "cmd.init.opt_file": "Path to file",
   "cmd.init.opt_force": "Overwrite if exists",
 
-  "cmd.add.help": "Add a service to docker-compose.yml.\n\nBy default launches an interactive setup wizard.\nWith the [green]--yes[/] (-y) flag skips all questions and uses default values.\n\n[bold]Examples (script mode):[/]\n\n  rdt add postgres --yes\n\n  rdt add postgres --yes --port 5433 --volume ./data/pg\n\n  rdt add redis --yes --depends-on rdt-postgres --depends-on rdt-rabbitmq\n\n  rdt add postgres --hardcore --yes",
+  "cmd.add.help": "Add a service to docker-compose.yml.\n\nBy default launches an interactive setup wizard.\nWith the [green]--yes[/] (-y) flag skips all questions and uses default values.\nUse [green]--set key=value[/] to override any wizard answer without interaction.\n\n[bold]Examples (script mode):[/]\n\n  rdt add postgres --yes\n\n  rdt add postgres --yes --port 5433 --volume ./data/pg\n\n  rdt add redis --yes --depends-on rdt-postgres --depends-on rdt-rabbitmq\n\n  rdt add postgres --hardcore --yes\n\n[bold]Examples (--set overrides):[/]\n\n  rdt add nginx-proxy --set nginx_upstream=app:8080\n\n  rdt add nginx-proxy --set nginx_upstream=app:8080 --set nginx_server_name=example.com\n\n  rdt add logstash --set logstash_pipeline=beats-es --set logstash_es_host=elasticsearch:9200",
   "cmd.add.arg_service": "Service name (e.g.: postgres, redis, kafka)",
   "cmd.add.opt_file": "Path to docker-compose.yml",
   "cmd.add.opt_hardcore": "Generate unique passwords",
@@ -154,6 +154,32 @@
   "wizard.apache_server_name": "Server name (e.g. localhost or example.com):",
   "wizard.apache_config_dir": "Directory for Apache config (relative to project root):",
   "wizard.apache_html_dir": "Directory for static files (relative to project root):",
-  "wizard.apache_src_dir": "Directory with PHP sources (relative to project root):"
+  "wizard.apache_src_dir": "Directory with PHP sources (relative to project root):",
+
+  "plan.header": "\n[bold]📋 Planned changes:[/]",
+  "plan.compose_create": "  [cyan]✦[/] Create [bold]{file}[/]",
+  "plan.compose_add_service": "  [cyan]✦[/] Add service [bold cyan]{name}[/] to [bold]{file}[/]",
+  "plan.env_write": "  [cyan]✦[/] Write [bold]{file}[/]: {keys}",
+  "plan.artifact_create": "  [green]+[/] Create: [bold]{path}[/]",
+  "plan.artifact_overwrite": "  [yellow]↺[/] Overwrite: [bold]{path}[/]",
+  "plan.artifact_skip": "  [dim]─[/] Skip (already exists): [dim]{path}[/]",
+
+  "wizard.logstash_specific_header": "\n[bold cyan]⚙  Logstash configuration[/]\n",
+  "wizard.logstash_pipeline_mode": "Pipeline mode:",
+  "wizard.logstash_pipeline_stdout": "beats → stdout (debug output)",
+  "wizard.logstash_pipeline_es": "beats → Elasticsearch",
+  "wizard.logstash_es_host": "Elasticsearch host (host:port):",
+
+  "plan.scaffold_create": "  [cyan]📁[/] Create directory: [bold]{path}[/]",
+  "plan.scaffold_skip": "  [dim]─[/] Directory already exists: [dim]{path}[/]",
+
+  "scaffold.header": "[bold]📁 Scaffolded directories:[/]",
+  "scaffold.created": "  [green]✓[/] Created directory: [bold]{path}[/]",
+  "scaffold.already_exists": "  [dim]─[/] Already exists: [dim]{path}[/]",
+  "scaffold.error": "  [red]✗[/] Error creating directory [bold]{path}[/]: {error}",
+
+  "bootstrap.header": "[bold yellow]💡 Bootstrap hints:[/]",
+  "bootstrap.hint": "  [yellow]•[/] {message}",
+  "bootstrap.command": "    [dim]$[/] [green]{command}[/]"
 }
 
