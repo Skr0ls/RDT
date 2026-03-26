@@ -61,6 +61,9 @@ def _run_interactive() -> None:
             except SystemExit:
                 pass
 
+        elif action == "check":
+            check()
+
         elif action == "up":
             up()
             return
@@ -277,6 +280,34 @@ def up(
     console.print(t("msg.running_cmd", cmd=" ".join(cmd)))
     result = subprocess.run(cmd)
     sys.exit(result.returncode)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# rdt check
+# ─────────────────────────────────────────────────────────────────────────────
+@app.command(help=t("cmd.check.help"))
+def check(
+    file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.check.opt_file"))] = COMPOSE_FILE,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help=t("cmd.check.opt_verbose"))] = False,
+) -> None:
+    if not file.exists():
+        console.print(t("msg.compose_not_found_run", file=file))
+        raise typer.Exit(1)
+
+    cmd = ["docker", "compose", "-f", str(file), "config"]
+    console.print(t("msg.check_running", file=file))
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode == 0:
+        if verbose and result.stdout:
+            console.print(result.stdout.strip())
+        console.print(t("msg.check_ok", file=file))
+    else:
+        if result.stderr:
+            console.print(result.stderr.strip())
+        console.print(t("msg.check_fail", file=file))
+        raise typer.Exit(result.returncode)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

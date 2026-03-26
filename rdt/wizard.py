@@ -308,6 +308,7 @@ def run_main_menu() -> str:
             questionary.Choice(t("menu.init"),  value="init"),
             questionary.Choice(t("menu.list"),  value="list"),
             questionary.Choice(t("menu.up"),    value="up"),
+            questionary.Choice(t("menu.check"), value="check"),
             questionary.Choice(t("menu.lang"),  value="lang"),
             questionary.Choice(t("menu.exit"),  value="exit"),
         ],
