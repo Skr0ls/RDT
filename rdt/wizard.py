@@ -266,6 +266,7 @@ def _ask_smart_mapping(
         "grafana": "Prometheus",
         "phpmyadmin": "MySQL / MariaDB",
         "mongo-express": "MongoDB",
+        "logstash": "Elasticsearch / OpenSearch",
     }
     parent_label = labels.get(service_name, t("wizard.smart_mapping_default_label"))
 
@@ -396,6 +397,41 @@ def _ask_apache_php_inputs(answers: dict[str, Any]) -> dict[str, Any]:
     return answers
 
 
+def _ask_logstash_inputs(answers: dict[str, Any]) -> dict[str, Any]:
+    """Дополнительные вопросы для Logstash: режим pipeline."""
+    console.print(t("wizard.logstash_specific_header"))
+
+    # Если smart mapping уже задал режим — предложить его как default
+    current_mode = answers.get("logstash_pipeline", "beats-stdout")
+
+    mode = questionary.select(
+        t("wizard.logstash_pipeline_mode"),
+        choices=[
+            questionary.Choice(t("wizard.logstash_pipeline_stdout"), value="beats-stdout"),
+            questionary.Choice(t("wizard.logstash_pipeline_es"), value="beats-es"),
+        ],
+        default="beats-stdout" if current_mode == "beats-stdout" else "beats-es",
+    ).ask()
+
+    answers["logstash_pipeline"] = mode or "beats-stdout"
+
+    if answers["logstash_pipeline"] == "beats-es":
+        default_host = answers.get("logstash_es_host") or \
+                       (answers.get("smart_env") or {}).get("LOGSTASH_ES_HOST") or \
+                       "elasticsearch:9200"
+        es_host = questionary.text(
+            t("wizard.logstash_es_host"),
+            default=default_host,
+        ).ask()
+        answers["logstash_es_host"] = (es_host or default_host).strip()
+
+    # Установить condition-флаги
+    answers["logstash_pipeline_stdout"] = (answers["logstash_pipeline"] == "beats-stdout")
+    answers["logstash_pipeline_es"] = (answers["logstash_pipeline"] == "beats-es")
+
+    return answers
+
+
 #: Маппинг service_name → callable для service-specific wizard вопросов.
 #: Расширяйте этот словарь при добавлении новых сервисов с конфигами.
 _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
@@ -404,6 +440,7 @@ _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = 
     "nginx-spa":     _ask_nginx_html_inputs,
     "apache-static": _ask_apache_static_inputs,
     "apache-php":    _ask_apache_php_inputs,
+    "logstash":      _ask_logstash_inputs,
 }
 
 
@@ -577,4 +614,16 @@ def _apply_service_script_defaults(preset: ServicePreset, answers: dict[str, Any
         answers.setdefault("apache_server_name", "localhost")
         answers.setdefault("apache_config_dir", DEFAULT_APACHE_CONFIG_DIR)
         answers.setdefault("apache_src_dir", DEFAULT_APACHE_SRC_DIR)
+
+    elif preset.name == "logstash":
+        # Режим pipeline: если smart mapping нашёл ES — beats-es, иначе beats-stdout
+        pipeline = answers.get("logstash_pipeline", "beats-stdout")
+        answers["logstash_pipeline"] = pipeline
+        answers["logstash_pipeline_stdout"] = (pipeline == "beats-stdout")
+        answers["logstash_pipeline_es"] = (pipeline == "beats-es")
+        if pipeline == "beats-es":
+            answers.setdefault(
+                "logstash_es_host",
+                (answers.get("smart_env") or {}).get("LOGSTASH_ES_HOST", "elasticsearch:9200"),
+            )
 

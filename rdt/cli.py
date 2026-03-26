@@ -20,7 +20,10 @@ from rdt.strategies.factory import get_strategy
 from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services, get_services_with_healthcheck
 from rdt.env_manager import get_env_values, write_env, write_env_example
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
-from rdt.artifacts import ArtifactContext, ArtifactPipeline, PreflightIssue
+from rdt.artifacts import (
+    ArtifactContext, ArtifactPipeline, ArtifactPlan, PreflightIssue,
+    ScaffoldPipeline, ScaffoldPlan,
+)
 from rdt.i18n import t
 import rdt.i18n as i18n
 
@@ -117,6 +120,40 @@ def _change_language() -> None:
         i18n.set_lang(selected)
         i18n.reload()
         console.print(t("lang.changed", lang=selected))
+
+
+def _print_plan_summary(
+    file: Path,
+    svc_key: str,
+    env_file: Path,
+    env_values: dict,
+    artifact_plans: list[ArtifactPlan],
+    compose_file_existed: bool,
+    scaffold_plans: list[ScaffoldPlan] | None = None,
+) -> None:
+    """Вывести сводку запланированных изменений до их применения."""
+    console.print(t("plan.header"))
+    if not compose_file_existed:
+        console.print(t("plan.compose_create", file=file))
+    else:
+        console.print(t("plan.compose_add_service", name=svc_key, file=file))
+    if env_values:
+        keys = ", ".join(env_values.keys())
+        console.print(t("plan.env_write", file=env_file, keys=keys))
+    for sp in (scaffold_plans or []):
+        path_str = str(sp.target)
+        if sp.action == "create":
+            console.print(t("plan.scaffold_create", path=path_str))
+        elif sp.action == "skip":
+            console.print(t("plan.scaffold_skip", path=path_str))
+    for ap in artifact_plans:
+        path_str = str(ap.target)
+        if ap.action == "create":
+            console.print(t("plan.artifact_create", path=path_str))
+        elif ap.action == "overwrite":
+            console.print(t("plan.artifact_overwrite", path=path_str))
+        elif ap.action == "skip":
+            console.print(t("plan.artifact_skip", path=path_str))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -245,8 +282,11 @@ def add(
     env_file = project_root / ".env"
     env_example_file = project_root / ".env.example"
 
-    # Создать базовый файл если не существует — с учётом выбранной сети
-    if data is None:
+    # ── ФАЗА ПЛАНИРОВАНИЯ (ничего не пишем на диск) ──────────────────────────
+
+    # Подготовить compose-данные в памяти
+    compose_was_new = data is None
+    if compose_was_new:
         console.print(t("msg.compose_not_found_create", file=file))
         net_cfg: dict = {
             "type": answers.get("network_type", "bridge"),
@@ -257,29 +297,28 @@ def add(
     # Получить значения переменных окружения
     env_values = get_env_values(preset.default_env, hardcore=hardcore or not answers.get("use_default_creds", True))
 
-    # Применить стратегию
+    # Применить стратегию (в памяти)
     strategy = get_strategy(preset, answers)
     service_def = strategy.build()
 
-    # Вставить сервис в compose
+    # Вставить сервис в compose (в памяти, без записи на диск)
     net_cfg = {
         "type": answers.get("network_type", "bridge"),
         "name": answers.get("network_name", NETWORK_NAME),
     }
     data = inject_service(data, svc_key, service_def, network_config=net_cfg)
-    save_compose(file, data)
 
-    # Обновить .env и .env.example относительно project root
-    write_env(env_file, env_values)
-    write_env_example(env_example_file, env_values)
+    # Построить scaffold-план (директории) без записи на диск
+    scaffold_pipeline: ScaffoldPipeline | None = None
+    scaffold_plans: list[ScaffoldPlan] = []
+    if preset.scaffolds:
+        scaffold_pipeline = ScaffoldPipeline(preset.scaffolds, project_root)
+        scaffold_plans = scaffold_pipeline.plan()
 
-    console.print(t("msg.service_added", name=preset.display_name, file=file))
-    if env_values:
-        console.print(t("msg.env_written", file=env_file))
-
-    # ── Генерация companion-артефактов ───────────────────────────────────────
+    # Построить артефакт-план без записи на диск
+    pipeline: ArtifactPipeline | None = None
+    artifact_plans: list[ArtifactPlan] = []
     if preset.artifacts:
-        # Строим полный контекст для pipeline (M3: ArtifactContext)
         artifact_ctx = ArtifactContext(
             service_name=svc_key,
             answers=answers,
@@ -287,6 +326,10 @@ def add(
             project_root=project_root,
             compose_file=file.resolve(),
             preset=preset,
+            smart_env=answers.get("smart_env", {}),
+            depends_on=answers.get("depends_on", []),
+            parent_service=answers.get("parent_service"),
+            service_def=service_def,
         )
         pipeline = ArtifactPipeline(preset.artifacts, artifact_ctx)
 
@@ -299,13 +342,50 @@ def add(
                 console.print(t("artifacts.preflight.issue", path=issue.artifact_path, reason=issue.reason))
             raise typer.Exit(1)
 
-        results = pipeline.run()
+        artifact_plans = pipeline.plan()
+
+    # Вывести сводку запланированных изменений
+    _print_plan_summary(
+        file=file,
+        svc_key=svc_key,
+        env_file=env_file,
+        env_values=env_values,
+        artifact_plans=artifact_plans,
+        compose_file_existed=not compose_was_new,
+        scaffold_plans=scaffold_plans,
+    )
+
+    # ── ФАЗА ПРИМЕНЕНИЯ (запись на диск) ─────────────────────────────────────
+
+    save_compose(file, data)
+    write_env(env_file, env_values)
+    write_env_example(env_example_file, env_values)
+
+    console.print(t("msg.service_added", name=preset.display_name, file=file))
+    if env_values:
+        console.print(t("msg.env_written", file=env_file))
+
+    if scaffold_pipeline is not None:
+        scaffold_results = scaffold_pipeline.apply(scaffold_plans)
+        ScaffoldPipeline.print_results(scaffold_results, console)
+
+    if pipeline is not None:
+        results = pipeline.apply(artifact_plans)
         ArtifactPipeline.print_results(results, console)
 
         # Фатальная ошибка если хотя бы один артефакт не сгенерирован
         if ArtifactPipeline.has_errors(results):
             console.print(t("artifacts.fatal_error"))
             raise typer.Exit(1)
+
+    # Вывести bootstrap-подсказки после успешного применения
+    if preset.bootstrap_hints:
+        console.print()
+        console.print(t("bootstrap.header"))
+        for hint in preset.bootstrap_hints:
+            console.print(t("bootstrap.hint", message=hint.message))
+            if hint.command:
+                console.print(t("bootstrap.command", command=hint.command))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
