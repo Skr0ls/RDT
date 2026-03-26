@@ -20,6 +20,7 @@ from rdt.strategies.factory import get_strategy
 from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services, get_services_with_healthcheck
 from rdt.env_manager import get_env_values, write_env, write_env_example
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
+from rdt.artifacts import ArtifactPipeline
 from rdt.i18n import t
 import rdt.i18n as i18n
 
@@ -238,6 +239,12 @@ def add(
     console.print(t("msg.service_added", name=preset.display_name, file=file))
     if env_values:
         console.print(t("msg.env_written", file=ENV_FILE))
+
+    # Генерация companion-артефактов (nginx.conf и подобные)
+    if preset.artifacts:
+        pipeline = ArtifactPipeline(preset.artifacts, answers)
+        results = pipeline.run()
+        ArtifactPipeline.print_results(results, console)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

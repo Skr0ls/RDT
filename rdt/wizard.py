@@ -2,7 +2,7 @@
 Интерактивный мастер добавления сервиса (Wizard Mode).
 """
 from __future__ import annotations
-from typing import Any
+from typing import Any, Callable
 
 import questionary
 from rich.console import Console
@@ -12,6 +12,10 @@ from rdt.presets.catalog import ServicePreset, CATEGORY_RELATIONAL, CATEGORY_NOS
 from rdt.port_utils import is_port_free, validate_port
 from rdt.smart_mapping import get_candidate_parents, apply_smart_mapping
 from rdt.strategies.base import NETWORK_NAME
+from rdt.strategies.web_server import (
+    DEFAULT_CONFIG_DIR, DEFAULT_HTML_DIR, _HTML_MODES,
+    DEFAULT_APACHE_CONFIG_DIR, DEFAULT_APACHE_HTML_DIR, DEFAULT_APACHE_SRC_DIR,
+)
 from rdt.i18n import t
 
 console = Console()
@@ -82,6 +86,11 @@ def run_wizard(
     candidates = get_candidate_parents(preset.name, existing_services)
     if candidates:
         answers = _ask_smart_mapping(preset.name, candidates, existing_services, answers)
+
+    # ── 10. Service-specific inputs (например, для nginx) ────────────────────
+    extra_fn = _SERVICE_EXTRA_WIZARDS.get(preset.name)
+    if extra_fn:
+        answers = extra_fn(answers)
 
     return answers
 
@@ -284,6 +293,121 @@ def _ask_smart_mapping(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Service-specific wizard inputs
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _ask_nginx_proxy_inputs(answers: dict[str, Any]) -> dict[str, Any]:
+    """Дополнительные вопросы для nginx-proxy."""
+    console.print(t("wizard.nginx_specific_header"))
+
+    upstream = questionary.text(
+        t("wizard.nginx_upstream"),
+        default="app:8000",
+    ).ask()
+    answers["nginx_upstream"] = (upstream or "app:8000").strip()
+
+    server_name = questionary.text(
+        t("wizard.nginx_server_name"),
+        default="localhost",
+    ).ask()
+    answers["nginx_server_name"] = (server_name or "localhost").strip()
+
+    config_dir = questionary.text(
+        t("wizard.nginx_config_dir"),
+        default=DEFAULT_CONFIG_DIR,
+    ).ask()
+    answers["nginx_config_dir"] = (config_dir or DEFAULT_CONFIG_DIR).strip()
+
+    return answers
+
+
+def _ask_nginx_html_inputs(answers: dict[str, Any]) -> dict[str, Any]:
+    """Дополнительные вопросы для nginx-static и nginx-spa."""
+    console.print(t("wizard.nginx_specific_header"))
+
+    server_name = questionary.text(
+        t("wizard.nginx_server_name"),
+        default="localhost",
+    ).ask()
+    answers["nginx_server_name"] = (server_name or "localhost").strip()
+
+    config_dir = questionary.text(
+        t("wizard.nginx_config_dir"),
+        default=DEFAULT_CONFIG_DIR,
+    ).ask()
+    answers["nginx_config_dir"] = (config_dir or DEFAULT_CONFIG_DIR).strip()
+
+    html_dir = questionary.text(
+        t("wizard.nginx_html_dir"),
+        default=DEFAULT_HTML_DIR,
+    ).ask()
+    answers["nginx_html_dir"] = (html_dir or DEFAULT_HTML_DIR).strip()
+
+    return answers
+
+
+def _ask_apache_static_inputs(answers: dict[str, Any]) -> dict[str, Any]:
+    """Дополнительные вопросы для apache-static."""
+    console.print(t("wizard.apache_specific_header"))
+
+    server_name = questionary.text(
+        t("wizard.apache_server_name"),
+        default="localhost",
+    ).ask()
+    answers["apache_server_name"] = (server_name or "localhost").strip()
+
+    config_dir = questionary.text(
+        t("wizard.apache_config_dir"),
+        default=DEFAULT_APACHE_CONFIG_DIR,
+    ).ask()
+    answers["apache_config_dir"] = (config_dir or DEFAULT_APACHE_CONFIG_DIR).strip()
+
+    html_dir = questionary.text(
+        t("wizard.apache_html_dir"),
+        default=DEFAULT_APACHE_HTML_DIR,
+    ).ask()
+    answers["apache_html_dir"] = (html_dir or DEFAULT_APACHE_HTML_DIR).strip()
+
+    return answers
+
+
+def _ask_apache_php_inputs(answers: dict[str, Any]) -> dict[str, Any]:
+    """Дополнительные вопросы для apache-php."""
+    console.print(t("wizard.apache_specific_header"))
+
+    server_name = questionary.text(
+        t("wizard.apache_server_name"),
+        default="localhost",
+    ).ask()
+    answers["apache_server_name"] = (server_name or "localhost").strip()
+
+    config_dir = questionary.text(
+        t("wizard.apache_config_dir"),
+        default=DEFAULT_APACHE_CONFIG_DIR,
+    ).ask()
+    answers["apache_config_dir"] = (config_dir or DEFAULT_APACHE_CONFIG_DIR).strip()
+
+    src_dir = questionary.text(
+        t("wizard.apache_src_dir"),
+        default=DEFAULT_APACHE_SRC_DIR,
+    ).ask()
+    answers["apache_src_dir"] = (src_dir or DEFAULT_APACHE_SRC_DIR).strip()
+
+    return answers
+
+
+#: Маппинг service_name → callable для service-specific wizard вопросов.
+#: Расширяйте этот словарь при добавлении новых сервисов с конфигами.
+_SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "nginx-proxy":   _ask_nginx_proxy_inputs,
+    "nginx-static":  _ask_nginx_html_inputs,
+    "nginx-spa":     _ask_nginx_html_inputs,
+    "apache-static": _ask_apache_static_inputs,
+    "apache-php":    _ask_apache_php_inputs,
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Главное интерактивное меню (запускается при rdt без аргументов)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -423,5 +547,34 @@ def build_script_answers(
         answers["parent_service"] = candidates[0]
         answers = apply_smart_mapping(preset.name, existing_services, answers)
 
+    # Service-specific defaults для script mode
+    _apply_service_script_defaults(preset, answers)
+
     return answers
+
+
+def _apply_service_script_defaults(preset: ServicePreset, answers: dict[str, Any]) -> None:
+    """
+    Установить service-specific значения по умолчанию для script mode.
+    Вызывается из build_script_answers после всех общих параметров.
+    """
+    if preset.name == "nginx-proxy":
+        answers.setdefault("nginx_upstream", "app:8000")
+        answers.setdefault("nginx_server_name", "localhost")
+        answers.setdefault("nginx_config_dir", DEFAULT_CONFIG_DIR)
+
+    elif preset.name in _HTML_MODES:
+        answers.setdefault("nginx_server_name", "localhost")
+        answers.setdefault("nginx_config_dir", DEFAULT_CONFIG_DIR)
+        answers.setdefault("nginx_html_dir", DEFAULT_HTML_DIR)
+
+    elif preset.name == "apache-static":
+        answers.setdefault("apache_server_name", "localhost")
+        answers.setdefault("apache_config_dir", DEFAULT_APACHE_CONFIG_DIR)
+        answers.setdefault("apache_html_dir", DEFAULT_APACHE_HTML_DIR)
+
+    elif preset.name == "apache-php":
+        answers.setdefault("apache_server_name", "localhost")
+        answers.setdefault("apache_config_dir", DEFAULT_APACHE_CONFIG_DIR)
+        answers.setdefault("apache_src_dir", DEFAULT_APACHE_SRC_DIR)
 
