@@ -15,6 +15,7 @@ from rich.table import Table
 from rich import box
 
 from rdt.presets.catalog import ALL_PRESETS, ServicePreset
+from rdt.strategies.base import NETWORK_NAME
 from rdt.strategies.factory import get_strategy
 from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services
 from rdt.env_manager import get_env_values, write_env, write_env_example
@@ -134,6 +135,13 @@ def add(
     port: Annotated[Optional[int], typer.Option("--port", "-p", help=t("cmd.add.opt_port"))] = None,
     volume: Annotated[Optional[str], typer.Option("--volume", help=t("cmd.add.opt_volume"))] = None,
     depends_on: Annotated[Optional[list[str]], typer.Option("--depends-on", help=t("cmd.add.opt_depends_on"))] = None,
+    container_name_opt: Annotated[Optional[str], typer.Option("--container-name", help=t("cmd.add.opt_container_name"))] = None,
+    no_ports: Annotated[bool, typer.Option("--no-ports", help=t("cmd.add.opt_no_ports"))] = False,
+    network: Annotated[Optional[str], typer.Option("--network", help=t("cmd.add.opt_network"))] = None,
+    hc_interval: Annotated[Optional[str], typer.Option("--hc-interval", help=t("cmd.add.opt_hc_interval"))] = None,
+    hc_timeout: Annotated[Optional[str], typer.Option("--hc-timeout", help=t("cmd.add.opt_hc_timeout"))] = None,
+    hc_retries: Annotated[Optional[int], typer.Option("--hc-retries", help=t("cmd.add.opt_hc_retries"))] = None,
+    hc_start_period: Annotated[Optional[str], typer.Option("--hc-start-period", help=t("cmd.add.opt_hc_start_period"))] = None,
 ) -> None:
     service = service.lower()
     preset = ALL_PRESETS.get(service)
@@ -142,24 +150,28 @@ def add(
         console.print(t("msg.use_rdt_list"))
         raise typer.Exit(1)
 
-    # Загрузить или создать файл
-    if not file.exists():
-        console.print(t("msg.compose_not_found_create", file=file))
-        data = make_base_compose()
-    else:
+    # Загрузить compose если существует, иначе отложим создание до получения answers
+    if file.exists():
         data = load_compose(file)
+        existing = get_existing_services(data)
+    else:
+        data = None
+        existing = []
 
-    existing = get_existing_services(data)
-
-    # Проверить что сервис не добавлен дважды
-    container_name = preset.name
-    if container_name in existing:
-        console.print(t("msg.file_exists", file=f"{container_name} in {file}"))
+    # Проверить что сервис не добавлен дважды (ключ в services = preset.name)
+    svc_key = preset.name
+    if svc_key in existing:
+        console.print(t("msg.file_exists", file=f"{svc_key} in {file}"))
         raise typer.Exit(1)
 
     # Режим с мастером или без
-    script_mode = yes or port is not None or volume is not None or depends_on is not None
-    if script_mode:
+    has_script_flags = (
+        yes or port is not None or volume is not None or depends_on is not None
+        or container_name_opt is not None or no_ports or network is not None
+        or hc_interval is not None or hc_timeout is not None
+        or hc_retries is not None or hc_start_period is not None
+    )
+    if has_script_flags:
         console.print(t("msg.adding_service_script", name=preset.display_name))
         answers = build_script_answers(
             preset=preset,
@@ -168,9 +180,25 @@ def add(
             depends_on=depends_on or [],
             hardcore=hardcore,
             existing_services=existing,
+            container_name=container_name_opt,
+            no_ports=no_ports,
+            network=network,
+            hc_interval=hc_interval,
+            hc_timeout=hc_timeout,
+            hc_retries=hc_retries,
+            hc_start_period=hc_start_period,
         )
     else:
         answers = run_wizard(preset, existing, hardcore=hardcore)
+
+    # Создать базовый файл если не существует — с учётом выбранной сети
+    if data is None:
+        console.print(t("msg.compose_not_found_create", file=file))
+        net_cfg: dict = {
+            "type": answers.get("network_type", "bridge"),
+            "name": answers.get("network_name", NETWORK_NAME),
+        }
+        data = make_base_compose(network_config=net_cfg)
 
     # Получить значения переменных окружения
     env_values = get_env_values(preset.default_env, hardcore=hardcore or not answers.get("use_default_creds", True))
@@ -180,7 +208,11 @@ def add(
     service_def = strategy.build()
 
     # Вставить сервис в compose
-    data = inject_service(data, container_name, service_def)
+    net_cfg = {
+        "type": answers.get("network_type", "bridge"),
+        "name": answers.get("network_name", NETWORK_NAME),
+    }
+    data = inject_service(data, svc_key, service_def, network_config=net_cfg)
     save_compose(file, data)
 
     # Обновить .env и .env.example

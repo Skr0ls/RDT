@@ -21,5 +21,8 @@ class DatabaseStrategy(BaseStrategy):
 
         # --- Healthcheck ---
         if self.preset.healthcheck:
-            service["healthcheck"] = dict(self.preset.healthcheck)
+            hc = dict(self.preset.healthcheck)
+            custom_hc = self.answers.get("healthcheck_params") or {}
+            hc.update(custom_hc)
+            service["healthcheck"] = hc
 

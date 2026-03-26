@@ -4,7 +4,7 @@
 
 ---
 
-## ✨ Features
+## Features
 
 - **Interactive wizard** — guided prompts for port, volume, credentials, and dependencies
 - **Script mode** — fully non-interactive via flags (`--yes`, `--port`, `--volume`, etc.)
@@ -17,7 +17,7 @@
 
 ---
 
-## 📋 Available Services
+## Available Services
 
 | Category | Services |
 |---|---|
@@ -33,7 +33,7 @@ Run `rdt list` at any time to see the full list with images and default ports.
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 

@@ -14,6 +14,13 @@
   "cmd.add.opt_port": "External service port",
   "cmd.add.opt_volume": "Volume or path for data (e.g.: ./data/pg)",
   "cmd.add.opt_depends_on": "Dependency (can be specified multiple times)",
+  "cmd.add.opt_container_name": "Container name (default: service name)",
+  "cmd.add.opt_no_ports": "Do not expose ports outside the Docker network",
+  "cmd.add.opt_network": "Network: bridge | host | none | <external-network-name>",
+  "cmd.add.opt_hc_interval": "Healthcheck interval (e.g.: 10s)",
+  "cmd.add.opt_hc_timeout": "Healthcheck timeout (e.g.: 5s)",
+  "cmd.add.opt_hc_retries": "Healthcheck retry count",
+  "cmd.add.opt_hc_start_period": "Healthcheck start period (e.g.: 30s)",
 
   "cmd.list.help": "Show all available presets by category.",
 
@@ -72,6 +79,26 @@
   "wizard.volume_local": "Local folder (./data/<service>)",
   "wizard.volume_custom": "Enter manually",
   "wizard.volume_enter": "Enter volume path or name:",
+  "wizard.container_name_question": "Container name:",
+  "wizard.container_name_default": "Default ({name})",
+  "wizard.container_name_custom": "Enter manually",
+  "wizard.container_name_enter": "Enter container name:",
+
+  "wizard.network_question": "Network type:",
+  "wizard.network_bridge": "bridge — isolated rambo-net network (default)",
+  "wizard.network_external": "external — connect to an existing Docker network",
+  "wizard.network_host": "host — use the host network stack",
+  "wizard.network_none": "none — no network",
+  "wizard.network_external_name": "External network name:",
+
+  "wizard.ports_question": "Expose port outside the Docker network?",
+
+  "wizard.healthcheck_question": "Use default healthcheck parameters?",
+  "wizard.healthcheck_interval": "interval (e.g.: 10s):",
+  "wizard.healthcheck_timeout": "timeout (e.g.: 5s):",
+  "wizard.healthcheck_retries": "retries (e.g.: 5):",
+  "wizard.healthcheck_start_period": "start_period (e.g.: 30s):",
+
   "wizard.depends_question": "Dependencies (depends_on). Space to select, Enter to skip:",
   "wizard.smart_mapping_found": "\n[bold green]🔗 Smart Mapping[/]: detected {label}",
   "wizard.smart_mapping_auto": "Auto-connect to [{service}]?",

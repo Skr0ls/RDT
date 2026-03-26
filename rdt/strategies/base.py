@@ -21,6 +21,9 @@ class BaseStrategy(ABC):
 
     @property
     def container_name(self) -> str:
+        custom = self.answers.get("container_name")
+        if custom:
+            return str(custom)
         return f"{CONTAINER_PREFIX}{self.preset.name}"
 
     def build(self) -> dict[str, Any]:
@@ -30,9 +33,19 @@ class BaseStrategy(ABC):
         service["container_name"] = self.container_name
         service["restart"] = DEFAULT_RESTART
 
-        # Порты
         host_port = self.answers.get("port", self.preset.default_port)
-        service["ports"] = [f"{host_port}:{self.preset.container_port}"]
+        net_type = self.answers.get("network_type", "bridge")
+        expose_ports = self.answers.get("expose_ports", True)
+
+        # host network_mode — порты не прокидываются явно
+        if net_type == "host":
+            service["network_mode"] = "host"
+        else:
+            # Порты
+            if expose_ports:
+                service["ports"] = [f"{host_port}:{self.preset.container_port}"]
+            else:
+                service["expose"] = [str(self.preset.container_port)]
 
         # Переменные окружения
         env = dict(self.preset.default_env)
@@ -40,8 +53,10 @@ class BaseStrategy(ABC):
         if env:
             service["environment"] = env
 
-        # Сеть
-        service["networks"] = [NETWORK_NAME]
+        # Сеть (не нужна для host и none)
+        if net_type not in ("host", "none"):
+            net_name = self.answers.get("network_name", NETWORK_NAME)
+            service["networks"] = [net_name]
 
         # depends_on
         if deps := self.answers.get("depends_on"):

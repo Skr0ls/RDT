@@ -21,7 +21,10 @@ class MonitoringStrategy(BaseStrategy):
             service["volumes"] = rendered_volumes
 
         if self.preset.healthcheck:
-            service["healthcheck"] = dict(self.preset.healthcheck)
+            hc = dict(self.preset.healthcheck)
+            custom_hc = self.answers.get("healthcheck_params") or {}
+            hc.update(custom_hc)
+            service["healthcheck"] = hc
 
         # Дополнительные env-переменные от smart-mapping
         smart_env = self.answers.get("smart_env", {})

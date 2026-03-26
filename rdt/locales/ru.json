@@ -14,6 +14,13 @@
   "cmd.add.opt_port": "Внешний порт сервиса",
   "cmd.add.opt_volume": "Volume или путь для данных (например: ./data/pg)",
   "cmd.add.opt_depends_on": "Зависимость (можно указать несколько раз)",
+  "cmd.add.opt_container_name": "Имя контейнера (по умолчанию — имя сервиса)",
+  "cmd.add.opt_no_ports": "Не прокидывать порты наружу (только внутри Docker-сети)",
+  "cmd.add.opt_network": "Сеть: bridge | host | none | <имя external-сети>",
+  "cmd.add.opt_hc_interval": "Интервал healthcheck (пример: 10s)",
+  "cmd.add.opt_hc_timeout": "Таймаут healthcheck (пример: 5s)",
+  "cmd.add.opt_hc_retries": "Количество попыток healthcheck",
+  "cmd.add.opt_hc_start_period": "Начальный период healthcheck (пример: 30s)",
 
   "cmd.list.help": "Показать все доступные пресеты по категориям.",
 
@@ -72,6 +79,26 @@
   "wizard.volume_local": "Локальная папка (./data/<service>)",
   "wizard.volume_custom": "Ввести вручную",
   "wizard.volume_enter": "Введите путь или имя volume:",
+  "wizard.container_name_question": "Имя контейнера:",
+  "wizard.container_name_default": "Стандартное ({name})",
+  "wizard.container_name_custom": "Ввести вручную",
+  "wizard.container_name_enter": "Введите имя контейнера:",
+
+  "wizard.network_question": "Тип сети:",
+  "wizard.network_bridge": "bridge — изолированная сеть rambo-net (по умолчанию)",
+  "wizard.network_external": "external — подключиться к существующей Docker-сети",
+  "wizard.network_host": "host — использовать сетевой стек хоста",
+  "wizard.network_none": "none — без сети",
+  "wizard.network_external_name": "Имя внешней сети:",
+
+  "wizard.ports_question": "Прокидывать порт наружу (за пределы Docker-сети)?",
+
+  "wizard.healthcheck_question": "Использовать стандартные параметры healthcheck?",
+  "wizard.healthcheck_interval": "interval (пример: 10s):",
+  "wizard.healthcheck_timeout": "timeout (пример: 5s):",
+  "wizard.healthcheck_retries": "retries (пример: 5):",
+  "wizard.healthcheck_start_period": "start_period (пример: 30s):",
+
   "wizard.depends_question": "Зависимости (depends_on). Отметьте пробелом, Enter — пропустить:",
   "wizard.smart_mapping_found": "\n[bold green]🔗 Smart Mapping[/]: обнаружен {label}",
   "wizard.smart_mapping_auto": "Автоматически подключить к [{service}]?",

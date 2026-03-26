@@ -40,38 +40,75 @@ def load_compose(path: Path) -> CommentedMap:
 
 def save_compose(path: Path, data: CommentedMap) -> None:
     """Сохранить docker-compose.yml."""
+    import re
+    import io
     y = _make_yaml()
+    buf = io.StringIO()
+    y.dump(data, buf)
+    # Нормализуем накопившиеся пустые строки: ≥3 переноса → ровно 2 (= 1 пустая строка)
+    content = re.sub(r'\n{3,}', '\n\n', buf.getvalue())
     with path.open("w", encoding="utf-8") as f:
-        y.dump(data, f)
+        f.write(content)
 
 
-def make_base_compose() -> CommentedMap:
-    """Создать базовую структуру docker-compose.yml."""
+def make_base_compose(network_config: dict | None = None) -> CommentedMap:
+    """Создать базовую структуру docker-compose.yml.
+
+    network_config: {"type": "bridge"|"external"|"host"|"none", "name": str}
+    """
     data = CommentedMap()
     data["services"] = CommentedMap()
-    data["networks"] = CommentedMap()
-    data["networks"][NETWORK_NAME] = CommentedMap({"driver": "bridge"})
+
+    net_type = (network_config or {}).get("type", "bridge")
+    net_name = (network_config or {}).get("name", NETWORK_NAME)
+
+    if net_type in ("bridge", "external"):
+        data["networks"] = CommentedMap()
+        if net_type == "bridge":
+            data["networks"][net_name] = CommentedMap({"driver": "bridge"})
+        else:
+            data["networks"][net_name] = CommentedMap({"external": True})
+
     data["volumes"] = CommentedMap()
     return data
 
 
-def inject_service(data: CommentedMap, service_name: str, service_def: dict[str, Any]) -> CommentedMap:
-    """Вставить новый сервис в секцию services без нарушения структуры."""
+def inject_service(
+    data: CommentedMap,
+    service_name: str,
+    service_def: dict[str, Any],
+    network_config: dict | None = None,
+) -> CommentedMap:
+    """Вставить новый сервис в секцию services без нарушения структуры.
+
+    network_config: {"type": "bridge"|"external"|"host"|"none", "name": str}
+    """
     if "services" not in data:
         data["services"] = CommentedMap()
-    if "networks" not in data:
-        data["networks"] = CommentedMap()
-        data["networks"][NETWORK_NAME] = CommentedMap({"driver": "bridge"})
     if "volumes" not in data:
         data["volumes"] = CommentedMap()
 
-    # Убедимся, что сеть объявлена
-    if NETWORK_NAME not in data["networks"]:
-        data["networks"][NETWORK_NAME] = CommentedMap({"driver": "bridge"})
+    net_type = (network_config or {}).get("type", "bridge")
+    net_name = (network_config or {}).get("name", NETWORK_NAME)
+
+    # Управление секцией networks в зависимости от типа
+    if net_type in ("bridge", "external"):
+        if "networks" not in data:
+            data["networks"] = CommentedMap()
+        if net_name not in data["networks"]:
+            if net_type == "bridge":
+                data["networks"][net_name] = CommentedMap({"driver": "bridge"})
+            else:
+                data["networks"][net_name] = CommentedMap({"external": True})
+    # host / none — секция networks для этой сети не нужна
 
     # Конвертируем в CommentedMap для сохранения порядка
     svc_map = _dict_to_commented(service_def)
     data["services"][service_name] = svc_map
+
+    # Пустая строка перед каждым сервисом кроме первого
+    if len(data["services"]) > 1:
+        data["services"].yaml_set_comment_before_after_key(service_name, before="\n")
 
     # Регистрируем named volumes
     for vol in service_def.get("volumes", []):
@@ -83,7 +120,17 @@ def inject_service(data: CommentedMap, service_name: str, service_def: dict[str,
                 if source not in data["volumes"]:
                     data["volumes"][source] = None  # type: ignore[assignment]
 
+    # Пустая строка перед networks и volumes (верхний уровень)
+    _ensure_section_spacing(data)
+
     return data
+
+
+def _ensure_section_spacing(data: CommentedMap) -> None:
+    """Гарантировать пустую строку перед networks и volumes на верхнем уровне."""
+    for key in ("networks", "volumes"):
+        if key in data:
+            data.yaml_set_comment_before_after_key(key, before="\n")
 
 
 def get_existing_services(data: CommentedMap) -> list[str]:
