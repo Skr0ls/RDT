@@ -58,6 +58,11 @@ SERVICE_DEFAULTS: dict[str, str] = {
     # pgAdmin
     "PGADMIN_EMAIL": "admin@pgadmin.local",
     "PGADMIN_PASSWORD": "admin",
+    # Kibana
+    "KIBANA_SYSTEM_PASSWORD": "kibana",
+    "KIBANA_ENCRYPTION_KEY": "changeme-32-chars-encryption-key",
+    # Seq
+    "SEQ_ADMIN_PASSWORD_HASH": "",
 }
 
 
