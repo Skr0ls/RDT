@@ -865,3 +865,301 @@ def test_preset_without_scaffolds_has_empty_list() -> None:
     from rdt.presets.catalog import POSTGRES
     assert POSTGRES.scaffolds == []
     assert POSTGRES.bootstrap_hints == []
+
+
+# ---------------------------------------------------------------------------
+# Scaffold fatal errors
+# ---------------------------------------------------------------------------
+
+def test_scaffold_error_detected_by_has_errors(tmp_path: Path) -> None:
+    """ScaffoldPipeline.has_errors() возвращает True если хотя бы одна директория не создана."""
+    from rdt.artifacts import ScaffoldPipeline, ScaffoldResult
+    # Создаём результат с ошибкой напрямую
+    error_result = ScaffoldResult(path=tmp_path / "bad", status="error", error="permission denied")
+    ok_result = ScaffoldResult(path=tmp_path / "ok", status="created")
+    assert ScaffoldPipeline.has_errors([error_result, ok_result]) is True
+    assert ScaffoldPipeline.has_errors([ok_result]) is False
+
+
+def test_scaffold_apply_returns_error_on_permission_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ScaffoldPipeline.apply() возвращает status='error' если mkdir бросает исключение."""
+    from rdt.artifacts import DirectoryDef, ScaffoldPipeline
+    import pathlib
+
+    # Патчим Path.mkdir чтобы бросал PermissionError
+    original_mkdir = pathlib.Path.mkdir
+
+    def mock_mkdir(self, *args, **kwargs):
+        if self == tmp_path / "fail_dir":
+            raise PermissionError("mocked permission error")
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "mkdir", mock_mkdir)
+
+    sp = ScaffoldPipeline([DirectoryDef(relative_path="fail_dir")], tmp_path)
+    results = sp.run()
+    assert len(results) == 1
+    assert results[0].has_error is True
+    assert "mocked permission error" in results[0].error
+
+
+# ---------------------------------------------------------------------------
+# Best-effort rollback
+# ---------------------------------------------------------------------------
+
+def test_rollback_restores_compose(tmp_path: Path) -> None:
+    """_do_rollback восстанавливает compose файл из снимка."""
+    from rich.console import Console
+    from rdt.cli import _do_rollback
+
+    compose_file = tmp_path / "docker-compose.yml"
+    original = "version: '3'\nservices: {}\n"
+    compose_file.write_text(original + "# modified\n", encoding="utf-8")
+
+    console = Console(quiet=True)
+    _do_rollback(
+        console=console,
+        compose_file=compose_file,
+        compose_was_new=False,
+        compose_snapshot=original,
+        env_file=tmp_path / ".env",
+        env_existed_before=False,
+        env_snapshot=None,
+        env_example_file=tmp_path / ".env.example",
+        env_example_existed_before=False,
+        env_example_snapshot=None,
+        scaffold_results=[],
+        artifact_results=[],
+    )
+    assert compose_file.read_text(encoding="utf-8") == original
+
+
+def test_rollback_removes_new_compose(tmp_path: Path) -> None:
+    """_do_rollback удаляет compose файл если он был создан в текущем запуске."""
+    from rich.console import Console
+    from rdt.cli import _do_rollback
+
+    compose_file = tmp_path / "docker-compose.yml"
+    compose_file.write_text("new content", encoding="utf-8")
+
+    console = Console(quiet=True)
+    _do_rollback(
+        console=console,
+        compose_file=compose_file,
+        compose_was_new=True,
+        compose_snapshot=None,
+        env_file=tmp_path / ".env",
+        env_existed_before=False,
+        env_snapshot=None,
+        env_example_file=tmp_path / ".env.example",
+        env_example_existed_before=False,
+        env_example_snapshot=None,
+        scaffold_results=[],
+        artifact_results=[],
+    )
+    assert not compose_file.exists()
+
+
+def test_rollback_removes_created_artifact(tmp_path: Path) -> None:
+    """_do_rollback удаляет созданные артефакты (status='created')."""
+    from rich.console import Console
+    from rdt.cli import _do_rollback
+    from rdt.artifacts import ArtifactResult
+
+    artifact_file = tmp_path / "nginx" / "nginx.conf"
+    artifact_file.parent.mkdir(parents=True)
+    artifact_file.write_text("conf content", encoding="utf-8")
+
+    results = [ArtifactResult(path=artifact_file, status="created")]
+
+    console = Console(quiet=True)
+    _do_rollback(
+        console=console,
+        compose_file=tmp_path / "docker-compose.yml",
+        compose_was_new=False,
+        compose_snapshot=None,
+        env_file=tmp_path / ".env",
+        env_existed_before=True,
+        env_snapshot=None,
+        env_example_file=tmp_path / ".env.example",
+        env_example_existed_before=True,
+        env_example_snapshot=None,
+        scaffold_results=[],
+        artifact_results=results,
+    )
+    assert not artifact_file.exists()
+
+
+def test_rollback_removes_empty_scaffold_dir(tmp_path: Path) -> None:
+    """_do_rollback удаляет пустые scaffold-директории (status='created')."""
+    from rich.console import Console
+    from rdt.cli import _do_rollback
+    from rdt.artifacts import ScaffoldResult
+
+    scaffold_dir = tmp_path / "logstash" / "pipeline"
+    scaffold_dir.mkdir(parents=True)
+
+    results = [ScaffoldResult(path=scaffold_dir, status="created")]
+
+    console = Console(quiet=True)
+    _do_rollback(
+        console=console,
+        compose_file=tmp_path / "docker-compose.yml",
+        compose_was_new=False,
+        compose_snapshot=None,
+        env_file=tmp_path / ".env",
+        env_existed_before=True,
+        env_snapshot=None,
+        env_example_file=tmp_path / ".env.example",
+        env_example_existed_before=True,
+        env_example_snapshot=None,
+        scaffold_results=results,
+        artifact_results=[],
+    )
+    assert not scaffold_dir.exists()
+
+
+def test_rollback_does_not_remove_nonempty_scaffold_dir(tmp_path: Path) -> None:
+    """_do_rollback не удаляет непустые scaffold-директории."""
+    from rich.console import Console
+    from rdt.cli import _do_rollback
+    from rdt.artifacts import ScaffoldResult
+
+    scaffold_dir = tmp_path / "logstash" / "pipeline"
+    scaffold_dir.mkdir(parents=True)
+    (scaffold_dir / "logstash.conf").write_text("pipeline {}", encoding="utf-8")
+
+    results = [ScaffoldResult(path=scaffold_dir, status="created")]
+
+    console = Console(quiet=True)
+    _do_rollback(
+        console=console,
+        compose_file=tmp_path / "docker-compose.yml",
+        compose_was_new=False,
+        compose_snapshot=None,
+        env_file=tmp_path / ".env",
+        env_existed_before=True,
+        env_snapshot=None,
+        env_example_file=tmp_path / ".env.example",
+        env_example_existed_before=True,
+        env_example_snapshot=None,
+        scaffold_results=results,
+        artifact_results=[],
+    )
+    # Directory should still exist because it's non-empty
+    assert scaffold_dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# Kibana preset integration
+# ---------------------------------------------------------------------------
+
+def test_kibana_preset_exists() -> None:
+    """KIBANA пресет присутствует в каталоге и имеет правильные базовые поля."""
+    from rdt.presets.catalog import ALL_PRESETS, KIBANA
+    assert "kibana" in ALL_PRESETS
+    assert ALL_PRESETS["kibana"] is KIBANA
+    assert KIBANA.display_name == "Kibana"
+    assert KIBANA.default_port == 5601
+    assert KIBANA.container_port == 5601
+    assert KIBANA.depends_on_category is not None
+
+
+def test_kibana_preset_env_contains_required_keys() -> None:
+    """KIBANA пресет содержит обязательные переменные окружения."""
+    from rdt.presets.catalog import KIBANA
+    env_keys = set(KIBANA.default_env.keys())
+    assert "ELASTICSEARCH_HOSTS" in env_keys
+    assert "ELASTICSEARCH_USERNAME" in env_keys
+    assert "ELASTICSEARCH_PASSWORD" in env_keys
+
+
+def test_kibana_smart_mapping_detects_elasticsearch() -> None:
+    """Kibana Smart Mapping корректно подхватывает elasticsearch сервис."""
+    from rdt.smart_mapping import apply_smart_mapping, get_candidate_parents
+    existing = ["elasticsearch"]
+    candidates = get_candidate_parents("kibana", existing)
+    assert "elasticsearch" in candidates
+
+    answers: dict = {}
+    apply_smart_mapping("kibana", existing, answers)
+    assert "elasticsearch" in answers.get("depends_on", [])
+    assert "elasticsearch" in answers.get("smart_env", {}).get("ELASTICSEARCH_HOSTS", "")
+
+
+def test_kibana_smart_mapping_detects_opensearch() -> None:
+    """Kibana Smart Mapping корректно подхватывает opensearch сервис."""
+    from rdt.smart_mapping import apply_smart_mapping, get_candidate_parents
+    existing = ["opensearch"]
+    candidates = get_candidate_parents("kibana", existing)
+    assert "opensearch" in candidates
+
+    answers: dict = {}
+    apply_smart_mapping("kibana", existing, answers)
+    assert "opensearch" in answers.get("depends_on", [])
+
+
+def test_kibana_smart_mapping_noop_without_es() -> None:
+    """Kibana Smart Mapping не добавляет зависимостей если нет ES/OpenSearch."""
+    from rdt.smart_mapping import apply_smart_mapping, get_candidate_parents
+    existing = ["postgres", "redis"]
+    candidates = get_candidate_parents("kibana", existing)
+    assert candidates == []
+
+    answers: dict = {}
+    apply_smart_mapping("kibana", existing, answers)
+    assert answers.get("depends_on", []) == []
+
+
+def test_kibana_env_defaults_registered() -> None:
+    """SERVICE_DEFAULTS содержит значения для Kibana credentials."""
+    from rdt.env_manager import SERVICE_DEFAULTS
+    assert "KIBANA_SYSTEM_PASSWORD" in SERVICE_DEFAULTS
+    assert "KIBANA_ENCRYPTION_KEY" in SERVICE_DEFAULTS
+
+
+def test_kibana_preset_has_bootstrap_hint() -> None:
+    """KIBANA пресет содержит bootstrap-подсказку для настройки kibana_system пользователя."""
+    from rdt.presets.catalog import KIBANA
+    assert len(KIBANA.bootstrap_hints) >= 1
+    hint = KIBANA.bootstrap_hints[0]
+    assert "kibana_system" in hint.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Seq preset integration
+# ---------------------------------------------------------------------------
+
+def test_seq_preset_exists() -> None:
+    """SEQ пресет присутствует в каталоге и имеет правильные базовые поля."""
+    from rdt.presets.catalog import ALL_PRESETS, SEQ
+    assert "seq" in ALL_PRESETS
+    assert ALL_PRESETS["seq"] is SEQ
+    assert "Seq" in SEQ.display_name
+    assert SEQ.default_port == 5341
+
+
+def test_seq_preset_env_contains_accept_eula() -> None:
+    """SEQ пресет содержит ACCEPT_EULA в переменных окружения."""
+    from rdt.presets.catalog import SEQ
+    assert "ACCEPT_EULA" in SEQ.default_env
+    assert SEQ.default_env["ACCEPT_EULA"] == "Y"
+
+
+def test_seq_preset_no_artifacts() -> None:
+    """SEQ пресет не требует companion-артефактов."""
+    from rdt.presets.catalog import SEQ
+    assert SEQ.artifacts == []
+    assert SEQ.scaffolds == []
+
+
+def test_seq_preset_has_volume() -> None:
+    """SEQ пресет объявляет volume для персистентного хранилища."""
+    from rdt.presets.catalog import SEQ
+    assert len(SEQ.volumes) >= 1
+
+
+def test_seq_preset_has_bootstrap_hint() -> None:
+    """SEQ пресет содержит bootstrap-подсказку."""
+    from rdt.presets.catalog import SEQ
+    assert len(SEQ.bootstrap_hints) >= 1

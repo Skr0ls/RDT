@@ -352,6 +352,35 @@ LOGSTASH = ServicePreset(
     ],
 )
 
+KIBANA = ServicePreset(
+    name="kibana",
+    display_name="Kibana",
+    category=CATEGORY_SEARCH,
+    image="kibana:8.13.0",
+    default_port=5601,
+    container_port=5601,
+    default_env={
+        "ELASTICSEARCH_HOSTS": "http://elasticsearch:9200",
+        "ELASTICSEARCH_USERNAME": "kibana_system",
+        "ELASTICSEARCH_PASSWORD": "${KIBANA_SYSTEM_PASSWORD}",
+        "XPACK_SECURITY_ENCRYPTIONKEY": "${KIBANA_ENCRYPTION_KEY}",
+    },
+    volumes=[],
+    healthcheck={
+        "test": ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"],
+        "interval": "15s", "timeout": "10s", "retries": 5, "start_period": "90s",
+    },
+    deploy_limits={"cpus": "1.0", "memory": "1G"},
+    strategy="base",
+    depends_on_category=CATEGORY_SEARCH,
+    bootstrap_hints=[
+        BootstrapHint(
+            message="Kibana connects as the 'kibana_system' user. Set its password in Elasticsearch before starting Kibana:",
+            command='docker exec -it elasticsearch curl -s -u elastic:${ELASTIC_PASSWORD} -X POST "http://localhost:9200/_security/user/kibana_system/_password" -H "Content-Type: application/json" -d \'{"password": "${KIBANA_SYSTEM_PASSWORD}"}\'',
+        ),
+    ],
+)
+
 # ---------------------------------------------------------------------------
 # Message Brokers
 # ---------------------------------------------------------------------------
@@ -680,6 +709,31 @@ APACHE_PHP = ServicePreset(
     ],
 )
 
+SEQ = ServicePreset(
+    name="seq",
+    display_name="Seq (Structured Logs)",
+    category=CATEGORY_SEARCH,
+    image="datalust/seq:latest",
+    default_port=5341,
+    container_port=80,
+    default_env={
+        "ACCEPT_EULA": "Y",
+        "SEQ_FIRSTRUN_ADMINPASSWORDHASH": "${SEQ_ADMIN_PASSWORD_HASH}",
+    },
+    volumes=["{{ volume_source }}:/data"],
+    healthcheck={
+        "test": ["CMD-SHELL", "curl -sf http://localhost/api || exit 1"],
+        "interval": "10s", "timeout": "5s", "retries": 5, "start_period": "30s",
+    },
+    deploy_limits={"cpus": "0.5", "memory": "512M"},
+    strategy="database",
+    bootstrap_hints=[
+        BootstrapHint(
+            message="Seq UI is available at http://localhost:5341. On first run the admin password hash must be set. Generate it with: echo -n 'yourpassword' | sha256sum",
+        ),
+    ],
+)
+
 # ---------------------------------------------------------------------------
 # Реестр всех пресетов
 # ---------------------------------------------------------------------------
@@ -689,11 +743,12 @@ ALL_PRESETS: dict[str, ServicePreset] = {
         APACHE_STATIC, APACHE_PHP,
         POSTGRES, MYSQL, MARIADB, MSSQL, ORACLE,
         MONGODB, REDIS, VALKEY, CASSANDRA, INFLUXDB,
-        ELASTICSEARCH, OPENSEARCH, LOGSTASH,
+        ELASTICSEARCH, OPENSEARCH, LOGSTASH, KIBANA,
         KAFKA_KRAFT, RABBITMQ,
         KEYCLOAK,
         PROMETHEUS, GRAFANA, ZOOKEEPER,
         PGADMIN, PHPMYADMIN, KAFKA_UI, MONGO_EXPRESS,
+        SEQ,
     ]
 }
 

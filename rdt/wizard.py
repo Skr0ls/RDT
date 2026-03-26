@@ -267,6 +267,7 @@ def _ask_smart_mapping(
         "phpmyadmin": "MySQL / MariaDB",
         "mongo-express": "MongoDB",
         "logstash": "Elasticsearch / OpenSearch",
+        "kibana": "Elasticsearch / OpenSearch",
     }
     parent_label = labels.get(service_name, t("wizard.smart_mapping_default_label"))
 

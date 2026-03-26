@@ -21,8 +21,8 @@ from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inje
 from rdt.env_manager import get_env_values, write_env, write_env_example
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
 from rdt.artifacts import (
-    ArtifactContext, ArtifactPipeline, ArtifactPlan, PreflightIssue,
-    ScaffoldPipeline, ScaffoldPlan,
+    ArtifactContext, ArtifactPipeline, ArtifactPlan, ArtifactResult, PreflightIssue,
+    ScaffoldPipeline, ScaffoldPlan, ScaffoldResult,
 )
 from rdt.i18n import t
 import rdt.i18n as i18n
@@ -120,6 +120,82 @@ def _change_language() -> None:
         i18n.set_lang(selected)
         i18n.reload()
         console.print(t("lang.changed", lang=selected))
+
+
+def _do_rollback(
+    console: Console,
+    compose_file: Path,
+    compose_was_new: bool,
+    compose_snapshot: str | None,
+    env_file: Path,
+    env_existed_before: bool,
+    env_snapshot: str | None,
+    env_example_file: Path,
+    env_example_existed_before: bool,
+    env_example_snapshot: str | None,
+    scaffold_results: list[ScaffoldResult],
+    artifact_results: list[ArtifactResult],
+) -> None:
+    """Best-effort rollback: восстановить compose/env и удалить созданные файлы/директории."""
+    console.print(t("rollback.header"))
+
+    # 1. Откатить compose файл
+    try:
+        if compose_was_new:
+            if compose_file.exists():
+                compose_file.unlink()
+                console.print(t("rollback.compose_removed", file=str(compose_file)))
+        elif compose_snapshot is not None:
+            compose_file.write_text(compose_snapshot, encoding="utf-8")
+            console.print(t("rollback.compose_restored", file=str(compose_file)))
+    except Exception as exc:
+        console.print(t("rollback.warn", error=str(exc)))
+
+    # 2. Откатить .env
+    try:
+        if not env_existed_before:
+            if env_file.exists():
+                env_file.unlink()
+                console.print(t("rollback.env_removed", file=str(env_file)))
+        elif env_snapshot is not None:
+            env_file.write_text(env_snapshot, encoding="utf-8")
+            console.print(t("rollback.env_restored", file=str(env_file)))
+    except Exception as exc:
+        console.print(t("rollback.warn", error=str(exc)))
+
+    # 3. Откатить .env.example
+    try:
+        if not env_example_existed_before:
+            if env_example_file.exists():
+                env_example_file.unlink()
+                console.print(t("rollback.env_removed", file=str(env_example_file)))
+        elif env_example_snapshot is not None:
+            env_example_file.write_text(env_example_snapshot, encoding="utf-8")
+            console.print(t("rollback.env_restored", file=str(env_example_file)))
+    except Exception as exc:
+        console.print(t("rollback.warn", error=str(exc)))
+
+    # 4. Удалить созданные артефакты
+    for r in artifact_results:
+        if r.status == "created":
+            try:
+                if r.path.exists():
+                    r.path.unlink()
+                    console.print(t("rollback.artifact_removed", path=str(r.path)))
+            except Exception as exc:
+                console.print(t("rollback.warn", error=str(exc)))
+
+    # 5. Удалить созданные scaffold-директории (только пустые)
+    for r in scaffold_results:
+        if r.status == "created":
+            try:
+                if r.path.exists() and r.path.is_dir() and not any(r.path.iterdir()):
+                    r.path.rmdir()
+                    console.print(t("rollback.dir_removed", path=str(r.path)))
+            except Exception as exc:
+                console.print(t("rollback.warn", error=str(exc)))
+
+    console.print(t("rollback.done"))
 
 
 def _print_plan_summary(
@@ -355,6 +431,15 @@ def add(
         scaffold_plans=scaffold_plans,
     )
 
+    # ── Снимок состояния перед записью (для best-effort rollback) ────────────
+    compose_snapshot: str | None = file.read_text(encoding="utf-8") if file.exists() else None
+    env_existed_before = env_file.exists()
+    env_snapshot: str | None = env_file.read_text(encoding="utf-8") if env_existed_before else None
+    env_example_existed_before = env_example_file.exists()
+    env_example_snapshot: str | None = (
+        env_example_file.read_text(encoding="utf-8") if env_example_existed_before else None
+    )
+
     # ── ФАЗА ПРИМЕНЕНИЯ (запись на диск) ─────────────────────────────────────
 
     save_compose(file, data)
@@ -365,17 +450,51 @@ def add(
     if env_values:
         console.print(t("msg.env_written", file=env_file))
 
+    scaffold_results: list[ScaffoldResult] = []
     if scaffold_pipeline is not None:
         scaffold_results = scaffold_pipeline.apply(scaffold_plans)
         ScaffoldPipeline.print_results(scaffold_results, console)
 
-    if pipeline is not None:
-        results = pipeline.apply(artifact_plans)
-        ArtifactPipeline.print_results(results, console)
+        # Scaffold errors теперь фатальны + best-effort rollback
+        if ScaffoldPipeline.has_errors(scaffold_results):
+            console.print(t("scaffold.fatal_error"))
+            _do_rollback(
+                console=console,
+                compose_file=file,
+                compose_was_new=compose_was_new,
+                compose_snapshot=compose_snapshot,
+                env_file=env_file,
+                env_existed_before=env_existed_before,
+                env_snapshot=env_snapshot,
+                env_example_file=env_example_file,
+                env_example_existed_before=env_example_existed_before,
+                env_example_snapshot=env_example_snapshot,
+                scaffold_results=scaffold_results,
+                artifact_results=[],
+            )
+            raise typer.Exit(1)
 
-        # Фатальная ошибка если хотя бы один артефакт не сгенерирован
-        if ArtifactPipeline.has_errors(results):
+    if pipeline is not None:
+        artifact_results = pipeline.apply(artifact_plans)
+        ArtifactPipeline.print_results(artifact_results, console)
+
+        # Фатальная ошибка если хотя бы один артефакт не сгенерирован — выполнить rollback
+        if ArtifactPipeline.has_errors(artifact_results):
             console.print(t("artifacts.fatal_error"))
+            _do_rollback(
+                console=console,
+                compose_file=file,
+                compose_was_new=compose_was_new,
+                compose_snapshot=compose_snapshot,
+                env_file=env_file,
+                env_existed_before=env_existed_before,
+                env_snapshot=env_snapshot,
+                env_example_file=env_example_file,
+                env_example_existed_before=env_example_existed_before,
+                env_example_snapshot=env_example_snapshot,
+                scaffold_results=scaffold_results,
+                artifact_results=artifact_results,
+            )
             raise typer.Exit(1)
 
     # Вывести bootstrap-подсказки после успешного применения

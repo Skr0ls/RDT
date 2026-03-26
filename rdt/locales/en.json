@@ -180,6 +180,18 @@
 
   "bootstrap.header": "[bold yellow]💡 Bootstrap hints:[/]",
   "bootstrap.hint": "  [yellow]•[/] {message}",
-  "bootstrap.command": "    [dim]$[/] [green]{command}[/]"
+  "bootstrap.command": "    [dim]$[/] [green]{command}[/]",
+
+  "scaffold.fatal_error": "[bold red]✗ Scaffold failed. Aborting add operation.[/]",
+
+  "rollback.header": "\n[bold yellow]↩ Rolling back changes...[/]",
+  "rollback.compose_restored": "  [yellow]↩[/] Restored: [bold]{file}[/]",
+  "rollback.compose_removed": "  [yellow]↩[/] Removed: [bold]{file}[/]",
+  "rollback.env_restored": "  [yellow]↩[/] Restored: [bold]{file}[/]",
+  "rollback.env_removed": "  [yellow]↩[/] Removed: [bold]{file}[/]",
+  "rollback.artifact_removed": "  [yellow]↩[/] Removed artifact: [bold]{path}[/]",
+  "rollback.dir_removed": "  [yellow]↩[/] Removed directory: [bold]{path}[/]",
+  "rollback.warn": "  [dim]⚠ Rollback warning: {error}[/]",
+  "rollback.done": "[bold yellow]↩ Rollback complete.[/]"
 }
 

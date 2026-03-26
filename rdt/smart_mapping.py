@@ -26,6 +26,7 @@ def apply_smart_mapping(
         "phpmyadmin": _phpmyadmin_mapping,
         "mongo-express": _mongo_express_mapping,
         "logstash": _logstash_mapping,
+        "kibana": _kibana_mapping,
     }
     handler = handlers.get(service_name)
     if handler:
@@ -123,6 +124,20 @@ def _logstash_mapping(existing: list[str], answers: dict) -> None:
         answers.setdefault("logstash_es_host", f"{selected}:9200")
 
 
+def _kibana_mapping(existing: list[str], answers: dict) -> None:
+    """Kibana → Elasticsearch/OpenSearch: ELASTICSEARCH_HOSTS + depends_on."""
+    es_services = [s for s in existing if "elasticsearch" in s or "opensearch" in s]
+    if es_services:
+        selected = answers.get("parent_service", es_services[0])
+        answers.setdefault("smart_env", {})
+        answers["smart_env"]["ELASTICSEARCH_HOSTS"] = f"http://{selected}:9200"
+        deps = answers.get("depends_on", [])
+        if selected not in deps:
+            deps.append(selected)
+        answers["depends_on"] = deps
+        answers["parent_service"] = selected
+
+
 def get_candidate_parents(service_name: str, existing_services: list[str]) -> list[str]:
     """Вернуть список кандидатов-родителей для smart mapping."""
     filters = {
@@ -132,6 +147,7 @@ def get_candidate_parents(service_name: str, existing_services: list[str]) -> li
         "phpmyadmin": lambda s: "mysql" in s or "mariadb" in s,
         "mongo-express": lambda s: ("mongodb" in s or "mongo" in s) and "express" not in s,
         "logstash": lambda s: "elasticsearch" in s or "opensearch" in s,
+        "kibana": lambda s: "elasticsearch" in s or "opensearch" in s,
     }
     filt = filters.get(service_name)
     if filt:

@@ -180,6 +180,18 @@
 
   "bootstrap.header": "[bold yellow]💡 Подсказки по настройке:[/]",
   "bootstrap.hint": "  [yellow]•[/] {message}",
-  "bootstrap.command": "    [dim]$[/] [green]{command}[/]"
+  "bootstrap.command": "    [dim]$[/] [green]{command}[/]",
+
+  "scaffold.fatal_error": "[bold red]✗ Scaffolding не выполнен. Операция add прервана.[/]",
+
+  "rollback.header": "\n[bold yellow]↩ Откатываем изменения...[/]",
+  "rollback.compose_restored": "  [yellow]↩[/] Восстановлен: [bold]{file}[/]",
+  "rollback.compose_removed": "  [yellow]↩[/] Удалён: [bold]{file}[/]",
+  "rollback.env_restored": "  [yellow]↩[/] Восстановлен: [bold]{file}[/]",
+  "rollback.env_removed": "  [yellow]↩[/] Удалён: [bold]{file}[/]",
+  "rollback.artifact_removed": "  [yellow]↩[/] Удалён артефакт: [bold]{path}[/]",
+  "rollback.dir_removed": "  [yellow]↩[/] Удалена директория: [bold]{path}[/]",
+  "rollback.warn": "  [dim]⚠ Предупреждение rollback: {error}[/]",
+  "rollback.done": "[bold yellow]↩ Откат завершён.[/]"
 }
 
