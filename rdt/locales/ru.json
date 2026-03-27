@@ -265,6 +265,48 @@
   "doctor.companion_skip_no_compose": "пропущено (compose-файл не найден)",
   "doctor.companion_ok":              "все bind-mount файлы существуют",
   "doctor.companion_missing":         "{count} файл(ов) не найдено на диске",
-  "doctor.companion_missing_entry":   "  [yellow]•[/] [bold]{service}[/] → [dim]{path}[/]"
+  "doctor.companion_missing_entry":   "  [yellow]•[/] [bold]{service}[/] → [dim]{path}[/]",
+
+  "cmd.remove.help": "Удалить сервис из docker-compose.yml.\n\nОпционально очищает связанные ENV-переменные и companion-файлы.",
+  "cmd.remove.arg_service": "Имя сервиса для удаления (ключ в секции services)",
+  "cmd.remove.opt_file": "Путь к docker-compose.yml",
+  "cmd.remove.opt_yes": "Пропустить подтверждение",
+  "cmd.remove.opt_clean_env": "Удалить ENV-переменные, используемые только этим сервисом",
+  "cmd.remove.opt_clean_artifacts": "Удалить companion-файлы сервиса",
+  "menu.remove": "🗑️  Удалить сервис (rdt remove)",
+
+  "remove.header": "\n[bold red]🗑️  RDT Remove — удаление сервиса: [cyan]{service}[/][/]\n",
+  "remove.service_not_found": "[red]✗[/] Сервис [bold]{service}[/] не найден в [bold]{file}[/].\nДоступные: {available}",
+  "remove.no_services": "[yellow]⚠[/] В файле [bold]{file}[/] нет ни одного сервиса.",
+  "remove.compose_not_found": "[red]✗[/] Файл [bold]{file}[/] не найден. Нечего удалять.",
+
+  "remove.dependents_warn": "[yellow]⚠  Следующие сервисы зависят от [bold]{service}[/] и могут перестать работать:[/]",
+  "remove.dependents_entry": "  [yellow]•[/] [bold]{dependent}[/]",
+  "remove.dependents_note": "[dim]  Оборванные ссылки depends_on останутся в compose — удалите их вручную или через rdt doctor.[/]",
+
+  "remove.plan_header": "\n[bold]📋 Запланированные изменения:[/]",
+  "remove.plan_service": "  [red]✦[/] Удалить сервис [bold cyan]{service}[/] из [bold]{file}[/]",
+  "remove.plan_volume": "  [red]✦[/] Удалить именованный volume [bold]{volume}[/] (больше не используется)",
+  "remove.plan_env_var": "  [red]✦[/] Удалить ENV-переменную [bold]{var}[/] из [bold]{file}[/]",
+  "remove.plan_artifact": "  [red]✦[/] Удалить companion-файл [bold]{path}[/]",
+  "remove.plan_env_skip": "  [dim]–[/] ENV-переменные: осиротевших переменных нет",
+  "remove.plan_artifact_skip": "  [dim]–[/] Companion-файлы: нечего удалять",
+  "remove.plan_no_changes": "[dim]  Дополнительная очистка не требуется.[/]",
+
+  "remove.confirm": "Применить удаление?",
+  "remove.cancelled": "[dim]Отменено.[/]",
+
+  "remove.done": "\n[bold green]✓ Сервис [cyan]{service}[/] удалён успешно.[/]",
+  "remove.compose_saved": "[green]✓[/] Сохранён [bold]{file}[/]",
+  "remove.volume_removed": "[green]✓[/] Удалён именованный volume [bold]{volume}[/] из compose",
+  "remove.env_var_removed": "[green]✓[/] Удалена ENV-переменная [bold]{var}[/]",
+  "remove.env_file_cleaned": "[green]✓[/] Очищен [bold]{file}[/] — удалено {count} переменная(-ых)",
+  "remove.artifact_removed": "[green]✓[/] Удалён companion-файл [bold]{path}[/]",
+  "remove.artifact_not_found": "[dim]–[/] Companion-файл уже отсутствует: [bold]{path}[/]",
+  "remove.artifact_error": "[yellow]⚠[/] Не удалось удалить [bold]{path}[/]: {error}",
+
+  "remove.ask_service": "Какой сервис вы хотите удалить?",
+  "remove.ask_clean_env": "Удалить осиротевшие ENV-переменные из .env?",
+  "remove.ask_clean_artifacts": "Удалить companion-файлы/директории этого сервиса?"
 }
 
