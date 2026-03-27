@@ -16,6 +16,9 @@ from rdt.strategies.web_server import (
     DEFAULT_CONFIG_DIR, DEFAULT_HTML_DIR, _HTML_MODES,
     DEFAULT_APACHE_CONFIG_DIR, DEFAULT_APACHE_HTML_DIR, DEFAULT_APACHE_SRC_DIR,
 )
+from rdt.strategies.traefik import (
+    DEFAULT_TRAEFIK_CONFIG_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_HTTPS_PORT,
+)
 from rdt.i18n import t
 
 console = Console()
@@ -497,6 +500,78 @@ def _ask_filebeat_inputs(answers: dict[str, Any]) -> dict[str, Any]:
     return answers
 
 
+def _ask_traefik_inputs(answers: dict[str, Any]) -> dict[str, Any]:
+    """Дополнительные вопросы для Traefik."""
+    console.print(t("wizard.traefik_specific_header"))
+
+    # Dashboard
+    dashboard = questionary.confirm(
+        t("wizard.traefik_dashboard"),
+        default=True,
+    ).ask()
+    answers["traefik_dashboard"] = bool(dashboard)
+
+    if dashboard:
+        dashboard_port_raw = questionary.text(
+            t("wizard.traefik_dashboard_port"),
+            default=str(DEFAULT_DASHBOARD_PORT),
+        ).ask()
+        try:
+            answers["dashboard_port"] = int(dashboard_port_raw or DEFAULT_DASHBOARD_PORT)
+        except ValueError:
+            answers["dashboard_port"] = DEFAULT_DASHBOARD_PORT
+
+        insecure = questionary.confirm(
+            t("wizard.traefik_dashboard_insecure"),
+            default=True,
+        ).ask()
+        answers["traefik_dashboard_insecure"] = bool(insecure)
+    else:
+        answers["dashboard_port"] = DEFAULT_DASHBOARD_PORT
+        answers["traefik_dashboard_insecure"] = False
+
+    # HTTPS / Let's Encrypt
+    https = questionary.confirm(
+        t("wizard.traefik_https"),
+        default=False,
+    ).ask()
+    answers["traefik_https"] = bool(https)
+
+    if https:
+        https_port_raw = questionary.text(
+            t("wizard.traefik_https_port"),
+            default=str(DEFAULT_HTTPS_PORT),
+        ).ask()
+        try:
+            answers["https_port"] = int(https_port_raw or DEFAULT_HTTPS_PORT)
+        except ValueError:
+            answers["https_port"] = DEFAULT_HTTPS_PORT
+
+        redirect = questionary.confirm(
+            t("wizard.traefik_http_redirect"),
+            default=True,
+        ).ask()
+        answers["traefik_http_redirect"] = bool(redirect)
+
+        email = questionary.text(
+            t("wizard.traefik_acme_email"),
+            default="admin@example.com",
+        ).ask()
+        answers["traefik_acme_email"] = (email or "admin@example.com").strip()
+    else:
+        answers["https_port"] = DEFAULT_HTTPS_PORT
+        answers["traefik_http_redirect"] = False
+
+    # Config directory
+    config_dir = questionary.text(
+        t("wizard.traefik_config_dir"),
+        default=DEFAULT_TRAEFIK_CONFIG_DIR,
+    ).ask()
+    answers["traefik_config_dir"] = (config_dir or DEFAULT_TRAEFIK_CONFIG_DIR).strip()
+
+    return answers
+
+
 #: Маппинг service_name → callable для service-specific wizard вопросов.
 #: Расширяйте этот словарь при добавлении новых сервисов с конфигами.
 _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
@@ -507,6 +582,7 @@ _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = 
     "apache-php":    _ask_apache_php_inputs,
     "logstash":      _ask_logstash_inputs,
     "filebeat":      _ask_filebeat_inputs,
+    "traefik":       _ask_traefik_inputs,
 }
 
 
@@ -713,4 +789,14 @@ def _apply_service_script_defaults(preset: ServicePreset, answers: dict[str, Any
                 "filebeat_es_host",
                 (answers.get("smart_env") or {}).get("FILEBEAT_ES_HOST", "elasticsearch:9200"),
             )
+
+    elif preset.name == "traefik":
+        answers.setdefault("traefik_dashboard", True)
+        answers.setdefault("dashboard_port", DEFAULT_DASHBOARD_PORT)
+        answers.setdefault("traefik_dashboard_insecure", True)
+        answers.setdefault("traefik_https", False)
+        answers.setdefault("https_port", DEFAULT_HTTPS_PORT)
+        answers.setdefault("traefik_http_redirect", False)
+        answers.setdefault("traefik_acme_email", "admin@example.com")
+        answers.setdefault("traefik_config_dir", DEFAULT_TRAEFIK_CONFIG_DIR)
 
