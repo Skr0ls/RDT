@@ -1450,3 +1450,228 @@ def test_filebeat_scaffold_creates_dir(tmp_path: Path) -> None:
     results = sp.run()
     assert all(r.status == "created" for r in results)
     assert (tmp_path / "filebeat").is_dir()
+
+
+
+# ---------------------------------------------------------------------------
+# Traefik preset integration
+# ---------------------------------------------------------------------------
+
+def test_traefik_preset_exists() -> None:
+    """TRAEFIK пресет присутствует в каталоге и имеет правильные базовые поля."""
+    from rdt.presets.catalog import ALL_PRESETS, TRAEFIK
+    assert "traefik" in ALL_PRESETS
+    assert ALL_PRESETS["traefik"] is TRAEFIK
+    assert "Traefik" in TRAEFIK.display_name
+    assert TRAEFIK.default_port == 80
+    assert TRAEFIK.container_port == 80
+    assert TRAEFIK.strategy == "traefik"
+
+
+def test_traefik_preset_has_artifact() -> None:
+    """TRAEFIK пресет содержит ровно один companion-артефакт (traefik.yml)."""
+    from rdt.presets.catalog import TRAEFIK
+    assert len(TRAEFIK.artifacts) == 1
+    art = TRAEFIK.artifacts[0]
+    assert "traefik.yml" in art.relative_path
+    assert "traefik.yml.j2" in art.source_template
+
+
+def test_traefik_preset_has_scaffolds() -> None:
+    """TRAEFIK пресет декларирует scaffold-директории traefik/ и traefik/dynamic/."""
+    from rdt.presets.catalog import TRAEFIK
+    from rdt.artifacts import DirectoryDef
+    assert len(TRAEFIK.scaffolds) >= 2
+    assert all(isinstance(d, DirectoryDef) for d in TRAEFIK.scaffolds)
+    paths = [d.relative_path for d in TRAEFIK.scaffolds]
+    assert "traefik" in paths
+    assert "traefik/dynamic" in paths
+
+
+def test_traefik_preset_has_bootstrap_hints() -> None:
+    """TRAEFIK пресет содержит не менее трёх bootstrap-подсказок."""
+    from rdt.presets.catalog import TRAEFIK
+    assert len(TRAEFIK.bootstrap_hints) >= 3
+
+
+def test_traefik_preset_empty_env() -> None:
+    """TRAEFIK пресет не имеет обязательных env-переменных (Traefik конфигурируется через YAML)."""
+    from rdt.presets.catalog import TRAEFIK
+    assert TRAEFIK.default_env == {}
+
+
+# ---------------------------------------------------------------------------
+# TraefikStrategy — enrich
+# ---------------------------------------------------------------------------
+
+def _make_traefik_strategy(answers: dict):
+    from rdt.strategies.traefik import TraefikStrategy
+    from rdt.presets.catalog import TRAEFIK
+    return TraefikStrategy(preset=TRAEFIK, answers=answers)
+
+
+TRAEFIK_ANSWERS_BASIC = {
+    "port": 80,
+    "network_type": "bridge",
+    "expose_ports": True,
+    "traefik_dashboard": True,
+    "dashboard_port": 8080,
+    "traefik_dashboard_insecure": True,
+    "traefik_https": False,
+    "https_port": 443,
+    "traefik_http_redirect": False,
+    "traefik_config_dir": "./traefik",
+}
+
+TRAEFIK_ANSWERS_HTTPS = {
+    **TRAEFIK_ANSWERS_BASIC,
+    "traefik_https": True,
+    "traefik_acme_email": "admin@example.com",
+}
+
+
+def test_traefik_strategy_ports_basic() -> None:
+    """TraefikStrategy добавляет порты 80 и 8080 в базовом режиме."""
+    strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_BASIC)
+    service: dict = {}
+    strategy._enrich(service)
+    assert "80:80" in service["ports"]
+    assert "8080:8080" in service["ports"]
+    # HTTPS не включён — порт 443 не должен быть
+    assert not any("443" in p for p in service["ports"])
+
+
+def test_traefik_strategy_ports_https() -> None:
+    """TraefikStrategy добавляет порт 443 когда HTTPS включён."""
+    strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_HTTPS)
+    service: dict = {}
+    strategy._enrich(service)
+    assert any("443" in p for p in service["ports"])
+
+
+def test_traefik_strategy_volumes_basic() -> None:
+    """TraefikStrategy монтирует docker.sock и traefik.yml (без certs в базовом режиме)."""
+    strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_BASIC)
+    service: dict = {}
+    strategy._enrich(service)
+    volumes = service["volumes"]
+    assert any("docker.sock" in v for v in volumes)
+    assert any("traefik.yml" in v for v in volumes)
+    assert not any("certs" in v for v in volumes)
+
+
+def test_traefik_strategy_volumes_https() -> None:
+    """TraefikStrategy добавляет certs-volume при включённом HTTPS."""
+    strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_HTTPS)
+    service: dict = {}
+    strategy._enrich(service)
+    volumes = service["volumes"]
+    assert any("certs" in v for v in volumes)
+
+
+def test_traefik_strategy_healthcheck() -> None:
+    """TraefikStrategy устанавливает healthcheck через /ping эндпоинт."""
+    strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_BASIC)
+    service: dict = {}
+    strategy._enrich(service)
+    hc = service["healthcheck"]
+    assert "ping" in " ".join(hc["test"])
+    assert hc["interval"] == "10s"
+    assert hc["retries"] == 3
+
+
+def test_traefik_strategy_no_ports_when_host_network() -> None:
+    """TraefikStrategy не добавляет ports если network_type=host."""
+    answers = {**TRAEFIK_ANSWERS_BASIC, "network_type": "host"}
+    strategy = _make_traefik_strategy(answers)
+    service: dict = {}
+    strategy._enrich(service)
+    assert "ports" not in service
+
+
+# ---------------------------------------------------------------------------
+# Traefik — шаблон traefik.yml.j2
+# ---------------------------------------------------------------------------
+
+def _make_traefik_artifact_context(base_dir: Path, answers: dict) -> ArtifactContext:
+    return ArtifactContext(
+        service_name="traefik",
+        answers=answers,
+        env_values={},
+        project_root=base_dir,
+        compose_file=base_dir / "docker-compose.yml",
+        preset=None,
+        smart_env={},
+        depends_on=[],
+        parent_service=None,
+        service_def=None,
+    )
+
+
+def test_traefik_yml_template_created_basic(tmp_path: Path) -> None:
+    """traefik.yml.j2 рендерится корректно в базовом режиме (без HTTPS)."""
+    artifact = ArtifactDef(
+        relative_path="traefik/traefik.yml",
+        source_template="traefik/traefik.yml.j2",
+        overwrite=OverwritePolicy.SKIP,
+    )
+    ctx = _make_traefik_artifact_context(tmp_path, {**TRAEFIK_ANSWERS_BASIC})
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    assert len(results) == 1
+    assert results[0].status == "created"
+    content = results[0].path.read_text()
+    assert "entryPoints" in content
+    assert "web:" in content
+    assert "ping" in content
+    assert "dashboard: true" in content
+
+
+def test_traefik_yml_template_no_https_block_when_disabled(tmp_path: Path) -> None:
+    """traefik.yml.j2 не содержит certificatesResolvers если HTTPS отключён."""
+    artifact = ArtifactDef(
+        relative_path="traefik/traefik.yml",
+        source_template="traefik/traefik.yml.j2",
+        overwrite=OverwritePolicy.SKIP,
+    )
+    ctx = _make_traefik_artifact_context(tmp_path, {**TRAEFIK_ANSWERS_BASIC, "traefik_https": False})
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    content = results[0].path.read_text()
+    assert "certificatesResolvers" not in content
+    assert "websecure" not in content
+
+
+def test_traefik_yml_template_has_https_block_when_enabled(tmp_path: Path) -> None:
+    """traefik.yml.j2 содержит websecure и certificatesResolvers при HTTPS."""
+    artifact = ArtifactDef(
+        relative_path="traefik/traefik.yml",
+        source_template="traefik/traefik.yml.j2",
+        overwrite=OverwritePolicy.SKIP,
+    )
+    answers = {**TRAEFIK_ANSWERS_HTTPS, "traefik_acme_email": "test@example.com"}
+    ctx = _make_traefik_artifact_context(tmp_path, answers)
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    content = results[0].path.read_text()
+    assert "websecure" in content
+    assert "certificatesResolvers" in content
+    assert "test@example.com" in content
+
+
+# ---------------------------------------------------------------------------
+# Traefik — scaffold
+# ---------------------------------------------------------------------------
+
+def test_traefik_scaffold_creates_dirs(tmp_path: Path) -> None:
+    """ScaffoldPipeline + TRAEFIK.scaffolds создаёт traefik/ и traefik/dynamic/."""
+    from rdt.artifacts import ScaffoldPipeline
+    from rdt.presets.catalog import TRAEFIK
+    sp = ScaffoldPipeline(TRAEFIK.scaffolds, tmp_path)
+    results = sp.run()
+    assert all(r.status == "created" for r in results)
+    assert (tmp_path / "traefik").is_dir()
+    assert (tmp_path / "traefik" / "dynamic").is_dir()

@@ -794,6 +794,47 @@ SEQ = ServicePreset(
     ],
 )
 
+TRAEFIK = ServicePreset(
+    name="traefik",
+    display_name="Traefik (Reverse Proxy / Load Balancer)",
+    category=CATEGORY_WEB,
+    image="traefik:v3.0",
+    default_port=80,
+    container_port=80,
+    default_env={},
+    volumes=[],                 # volumes управляются TraefikStrategy
+    healthcheck=None,           # healthcheck задаётся в TraefikStrategy
+    deploy_limits={"cpus": "0.5", "memory": "128M"},
+    strategy="traefik",
+    artifacts=[
+        ArtifactDef(
+            relative_path="traefik/traefik.yml",
+            source_template="traefik/traefik.yml.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+    scaffolds=[
+        DirectoryDef(relative_path="traefik"),
+        DirectoryDef(relative_path="traefik/dynamic"),
+    ],
+    bootstrap_hints=[
+        BootstrapHint(
+            message="Traefik Dashboard доступен на http://localhost:8080/dashboard/ "
+                    "(по умолчанию insecure-режим). В production отключите insecure и настройте аутентификацию.",
+        ),
+        BootstrapHint(
+            message="Чтобы Traefik обнаруживал ваши сервисы, добавьте к ним labels:\n"
+                    "  traefik.enable=true\n"
+                    "  traefik.http.routers.<name>.rule=Host(`your.domain`)\n"
+                    "  traefik.http.services.<name>.loadbalancer.server.port=<port>",
+        ),
+        BootstrapHint(
+            message="Просмотр активных маршрутов и middleware:",
+            command="docker exec -it traefik wget -qO- http://localhost:8080/api/http/routers | python -m json.tool",
+        ),
+    ],
+)
+
 # ---------------------------------------------------------------------------
 # Реестр всех пресетов
 # ---------------------------------------------------------------------------
@@ -801,6 +842,7 @@ ALL_PRESETS: dict[str, ServicePreset] = {
     p.name: p for p in [
         NGINX_PROXY, NGINX_STATIC, NGINX_SPA,
         APACHE_STATIC, APACHE_PHP,
+        TRAEFIK,
         POSTGRES, MYSQL, MARIADB, MSSQL, ORACLE,
         MONGODB, REDIS, VALKEY, CASSANDRA, INFLUXDB,
         ELASTICSEARCH, OPENSEARCH, LOGSTASH, FILEBEAT, KIBANA,

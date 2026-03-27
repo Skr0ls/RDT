@@ -180,6 +180,16 @@
   "wizard.filebeat_kibana_host": "Kibana host for dashboard setup (leave blank to skip):",
   "wizard.filebeat_log_path": "Log path pattern (glob):",
 
+  "wizard.traefik_specific_header": "\n[bold cyan]⚙  Traefik configuration[/]\n",
+  "wizard.traefik_dashboard": "Enable Traefik Dashboard?",
+  "wizard.traefik_dashboard_port": "Dashboard port (default 8080):",
+  "wizard.traefik_dashboard_insecure": "Allow insecure access to the Dashboard (insecure mode)?",
+  "wizard.traefik_https": "Enable HTTPS / Let's Encrypt (ACME)?",
+  "wizard.traefik_https_port": "HTTPS port (default 443):",
+  "wizard.traefik_http_redirect": "Automatically redirect HTTP → HTTPS?",
+  "wizard.traefik_acme_email": "Email for Let's Encrypt (ACME):",
+  "wizard.traefik_config_dir": "Directory for traefik.yml (relative to project):",
+
   "plan.scaffold_create": "  [cyan]📁[/] Create directory: [bold]{path}[/]",
   "plan.scaffold_skip": "  [dim]─[/] Directory already exists: [dim]{path}[/]",
 
