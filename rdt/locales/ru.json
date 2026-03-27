@@ -170,6 +170,16 @@
   "wizard.logstash_pipeline_es": "beats → Elasticsearch",
   "wizard.logstash_es_host": "Хост Elasticsearch (host:port):",
 
+  "wizard.filebeat_specific_header": "\n[bold cyan]⚙  Настройка Filebeat[/]\n",
+  "wizard.filebeat_output_mode": "Назначение вывода:",
+  "wizard.filebeat_output_logstash": "→ Logstash (beats protocol, рекомендуется)",
+  "wizard.filebeat_output_es": "→ Elasticsearch (напрямую)",
+  "wizard.filebeat_output_stdout": "→ stdout (отладочный / dev режим)",
+  "wizard.filebeat_logstash_host": "Хост Logstash (host:port):",
+  "wizard.filebeat_es_host": "Хост Elasticsearch (host:port):",
+  "wizard.filebeat_kibana_host": "Хост Kibana для настройки дашбордов (оставьте пустым чтобы пропустить):",
+  "wizard.filebeat_log_path": "Путь к лог-файлам (glob-паттерн):",
+
   "plan.scaffold_create": "  [cyan]📁[/] Создать директорию: [bold]{path}[/]",
   "plan.scaffold_skip": "  [dim]─[/] Директория уже существует: [dim]{path}[/]",
 

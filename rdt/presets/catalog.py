@@ -352,6 +352,66 @@ LOGSTASH = ServicePreset(
     ],
 )
 
+FILEBEAT = ServicePreset(
+    name="filebeat",
+    display_name="Filebeat",
+    category=CATEGORY_SEARCH,
+    image="docker.elastic.co/beats/filebeat:8.13.0",
+    default_port=5066,
+    container_port=5066,
+    default_env={},
+    volumes=[
+        "./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro",
+        "filebeat_data:/usr/share/filebeat/data",
+    ],
+    healthcheck={
+        "test": ["CMD-SHELL", "curl -s http://localhost:5066/?pretty | grep -q '\"beat\"'"],
+        "interval": "15s", "timeout": "10s", "retries": 5, "start_period": "30s",
+    },
+    deploy_limits={"cpus": "0.5", "memory": "256M"},
+    strategy="database",
+    depends_on_category=CATEGORY_SEARCH,
+    artifacts=[
+        ArtifactDef(
+            relative_path="filebeat/filebeat.yml",
+            source_template="filebeat/filebeat-logstash.yml.j2",
+            overwrite=OverwritePolicy.SKIP,
+            condition="filebeat_output_logstash",
+        ),
+        ArtifactDef(
+            relative_path="filebeat/filebeat.yml",
+            source_template="filebeat/filebeat-es.yml.j2",
+            overwrite=OverwritePolicy.SKIP,
+            condition="filebeat_output_es",
+        ),
+        ArtifactDef(
+            relative_path="filebeat/filebeat.yml",
+            source_template="filebeat/filebeat-stdout.yml.j2",
+            overwrite=OverwritePolicy.SKIP,
+            condition="filebeat_output_stdout",
+        ),
+    ],
+    scaffolds=[
+        DirectoryDef(relative_path="filebeat"),
+    ],
+    bootstrap_hints=[
+        BootstrapHint(
+            message="Filebeat runs as root inside the container to access log files. "
+                    "Make sure the mounted filebeat.yml is owned by root:root with mode 0600 "
+                    "or Filebeat will refuse to load it.",
+        ),
+        BootstrapHint(
+            message="To ship Docker container logs, add a volume: "
+                    "/var/lib/docker/containers:/var/lib/docker/containers:ro "
+                    "and configure a filestream input with the correct path.",
+        ),
+        BootstrapHint(
+            message="Check Filebeat status and loaded config:",
+            command="docker exec -it filebeat filebeat test config -e",
+        ),
+    ],
+)
+
 KIBANA = ServicePreset(
     name="kibana",
     display_name="Kibana",
@@ -743,7 +803,7 @@ ALL_PRESETS: dict[str, ServicePreset] = {
         APACHE_STATIC, APACHE_PHP,
         POSTGRES, MYSQL, MARIADB, MSSQL, ORACLE,
         MONGODB, REDIS, VALKEY, CASSANDRA, INFLUXDB,
-        ELASTICSEARCH, OPENSEARCH, LOGSTASH, KIBANA,
+        ELASTICSEARCH, OPENSEARCH, LOGSTASH, FILEBEAT, KIBANA,
         KAFKA_KRAFT, RABBITMQ,
         KEYCLOAK,
         PROMETHEUS, GRAFANA, ZOOKEEPER,
