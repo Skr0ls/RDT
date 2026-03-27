@@ -15,7 +15,7 @@ authors = [
 ]
 keywords = ["docker", "docker-compose", "cli", "devops", "generator"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 3 - Beta/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
