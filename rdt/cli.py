@@ -1,6 +1,6 @@
 """
 CLI точка входа для RDT (Rambo Docker Tools).
-Команды: init, add, list, up, lang
+Команды: init, add, list, up, check, doctor, lang
 """
 from __future__ import annotations
 import subprocess
@@ -26,6 +26,7 @@ from rdt.artifacts import (
 )
 from rdt.i18n import t
 import rdt.i18n as i18n
+from rdt.doctor import run_all_checks, CheckResult
 
 app = typer.Typer(
     name="rdt",
@@ -79,6 +80,9 @@ def _run_interactive(ctx: typer.Context) -> None:
 
         elif action == "check":
             check()
+
+        elif action == "doctor":
+            doctor()
 
         elif action == "up":
             up()
@@ -583,6 +587,84 @@ def check(
             console.print(result.stderr.strip())
         console.print(t("msg.check_fail", file=file))
         raise typer.Exit(result.returncode)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# rdt doctor
+# ─────────────────────────────────────────────────────────────────────────────
+
+_STATUS_ICON = {
+    "ok":    "[green]✓[/]",
+    "warn":  "[yellow]⚠[/]",
+    "error": "[red]✗[/]",
+    "skip":  "[dim]─[/]",
+}
+_STATUS_STYLE = {
+    "ok":    "green",
+    "warn":  "yellow",
+    "error": "red",
+    "skip":  "dim",
+}
+_CHECK_LABEL_KEYS = {
+    "docker":           "doctor.check_docker",
+    "compose":          "doctor.check_compose",
+    "compose_valid":    "doctor.check_compose_valid",
+    "env_vars":         "doctor.check_env_vars",
+    "port_conflicts":   "doctor.check_port_conflicts",
+    "dangling_deps":    "doctor.check_dangling_deps",
+    "companion_files":  "doctor.check_companion_files",
+}
+
+
+@app.command(name="doctor", help=t("cmd.doctor.help"))
+def doctor(
+    file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.doctor.opt_file"))] = COMPOSE_FILE,
+) -> None:
+    from rich.table import Table
+    from rich import box as rich_box
+
+    project_root = _resolve_project_root(file)
+    console.print(t("doctor.header"))
+
+    results = run_all_checks(file, project_root)
+
+    table = Table(box=rich_box.ROUNDED, show_header=True, show_lines=False, expand=False)
+    table.add_column("", width=3, no_wrap=True)
+    table.add_column(t("doctor.check_docker").split()[0] if False else "Check", style="bold", no_wrap=True)
+    table.add_column("Result")
+
+    for r in results:
+        icon = _STATUS_ICON.get(r.status, "?")
+        style = _STATUS_STYLE.get(r.status, "")
+        label = t(_CHECK_LABEL_KEYS.get(r.name, r.name))
+        table.add_row(icon, label, f"[{style}]{r.message}[/]")
+
+    console.print(table)
+
+    # Подробности (details) — отдельно под таблицей
+    for r in results:
+        if r.details:
+            console.print()
+            label = t(_CHECK_LABEL_KEYS.get(r.name, r.name))
+            icon = _STATUS_ICON.get(r.status, "?")
+            console.print(f"  {icon} [bold]{label}:[/]")
+            for line in r.details:
+                console.print(line)
+
+    # Итоговая строка
+    errors = sum(1 for r in results if r.status == "error")
+    warns  = sum(1 for r in results if r.status == "warn")
+
+    console.print()
+    if errors == 0 and warns == 0:
+        console.print(t("doctor.summary_ok"))
+    elif errors == 0:
+        console.print(t("doctor.summary_warn", warn=warns))
+    else:
+        console.print(t("doctor.summary_error", error=errors, warn=warns))
+
+    if errors:
+        raise typer.Exit(1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

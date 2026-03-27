@@ -212,6 +212,59 @@
   "rollback.artifact_removed": "  [yellow]↩[/] Удалён артефакт: [bold]{path}[/]",
   "rollback.dir_removed": "  [yellow]↩[/] Удалена директория: [bold]{path}[/]",
   "rollback.warn": "  [dim]⚠ Предупреждение rollback: {error}[/]",
-  "rollback.done": "[bold yellow]↩ Откат завершён.[/]"
+  "rollback.done": "[bold yellow]↩ Откат завершён.[/]",
+
+  "cmd.doctor.help": "Полная диагностика Docker-проекта.\n\nПроверяет: наличие Docker, валидность compose-файла, покрытие env-переменных,\nконфликты портов, оборванные depends_on и отсутствующие companion-файлы.",
+  "cmd.doctor.opt_file": "Путь к docker-compose.yml",
+  "menu.doctor": "🩺  Диагностика проекта (rdt doctor)",
+
+  "doctor.header": "\n[bold cyan]🩺  RDT Doctor — диагностика проекта[/]\n",
+  "doctor.summary_ok": "\n[bold green]✓ Все проверки пройдены успешно.[/]",
+  "doctor.summary_warn": "\n[bold yellow]⚠  Диагностика завершена с {warn} предупреждением(ями).[/]",
+  "doctor.summary_error": "\n[bold red]✗  Диагностика завершена: {error} ошибок, {warn} предупреждений.[/]",
+
+  "doctor.check_docker":          "Docker доступен",
+  "doctor.check_compose":         "Docker Compose v2",
+  "doctor.check_compose_valid":   "Валидность compose",
+  "doctor.check_env_vars":        "ENV-переменные",
+  "doctor.check_port_conflicts":  "Конфликты портов",
+  "doctor.check_dangling_deps":   "Целостность depends_on",
+  "doctor.check_companion_files": "Companion-файлы",
+
+  "doctor.docker_ok":          "{version}",
+  "doctor.docker_not_found":   "docker не найден — установите Docker Desktop или Docker Engine",
+  "doctor.docker_not_running": "docker вернул ненулевой код — запущен ли Docker daemon?",
+  "doctor.docker_error":       "Неожиданная ошибка: {error}",
+
+  "doctor.compose_ok":        "{version}",
+  "doctor.compose_not_found": "docker compose (v2) не найден — обновите Docker или установите плагин Compose",
+  "doctor.compose_error":     "Неожиданная ошибка: {error}",
+
+  "doctor.compose_file_missing":         "файл не найден: {file}",
+  "doctor.compose_valid_ok":             "ошибок не обнаружено",
+  "doctor.compose_valid_fail":           "docker compose config обнаружил ошибки",
+  "doctor.compose_valid_skip_no_docker": "пропущено (docker недоступен)",
+  "doctor.compose_valid_error":          "Неожиданная ошибка: {error}",
+
+  "doctor.env_skip_no_compose": "пропущено (compose-файл не найден)",
+  "doctor.env_no_vars":         "ссылок на \\${VAR} не найдено",
+  "doctor.env_ok":              "все {count} переменная(-ых) определены",
+  "doctor.env_missing":         "{count} переменная(-ых) не задана в .env",
+  "doctor.env_missing_var":     "  [red]•[/] [bold]{var}[/] — не определена",
+
+  "doctor.port_skip_no_compose": "пропущено (compose-файл не найден)",
+  "doctor.port_ok":              "конфликтов портов не обнаружено",
+  "doctor.port_conflicts":       "{count} порт(ов) уже занят(ы) на хосте",
+  "doctor.port_busy_entry":      "  [red]•[/] [bold]{service}[/] → порт [yellow]{port}[/] занят",
+
+  "doctor.deps_skip_no_compose": "пропущено (compose-файл не найден)",
+  "doctor.deps_ok":              "все ссылки depends_on корректны",
+  "doctor.deps_dangling":        "{count} оборванная(-ых) ссылка(-ок) depends_on",
+  "doctor.deps_dangling_entry":  "  [red]•[/] [bold]{service}[/] ссылается на [yellow]{dep}[/] (не определён)",
+
+  "doctor.companion_skip_no_compose": "пропущено (compose-файл не найден)",
+  "doctor.companion_ok":              "все bind-mount файлы существуют",
+  "doctor.companion_missing":         "{count} файл(ов) не найдено на диске",
+  "doctor.companion_missing_entry":   "  [yellow]•[/] [bold]{service}[/] → [dim]{path}[/]"
 }
 

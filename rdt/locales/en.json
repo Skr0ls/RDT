@@ -212,6 +212,59 @@
   "rollback.artifact_removed": "  [yellow]↩[/] Removed artifact: [bold]{path}[/]",
   "rollback.dir_removed": "  [yellow]↩[/] Removed directory: [bold]{path}[/]",
   "rollback.warn": "  [dim]⚠ Rollback warning: {error}[/]",
-  "rollback.done": "[bold yellow]↩ Rollback complete.[/]"
+  "rollback.done": "[bold yellow]↩ Rollback complete.[/]",
+
+  "cmd.doctor.help": "Run a full project diagnostics check.\n\nVerifies Docker availability, compose file validity, env-variable coverage,\nport conflicts, dangling depends_on references, and missing companion files.",
+  "cmd.doctor.opt_file": "Path to docker-compose.yml",
+  "menu.doctor": "🩺  Diagnose project (rdt doctor)",
+
+  "doctor.header": "\n[bold cyan]🩺  RDT Doctor — project diagnostics[/]\n",
+  "doctor.summary_ok": "\n[bold green]✓ All checks passed.[/]",
+  "doctor.summary_warn": "\n[bold yellow]⚠  Diagnostics finished with {warn} warning(s).[/]",
+  "doctor.summary_error": "\n[bold red]✗  Diagnostics finished with {error} error(s) and {warn} warning(s).[/]",
+
+  "doctor.check_docker":          "Docker available",
+  "doctor.check_compose":         "Docker Compose v2",
+  "doctor.check_compose_valid":   "Compose file valid",
+  "doctor.check_env_vars":        "ENV variables",
+  "doctor.check_port_conflicts":  "Port conflicts",
+  "doctor.check_dangling_deps":   "depends_on integrity",
+  "doctor.check_companion_files": "Companion files",
+
+  "doctor.docker_ok":          "{version}",
+  "doctor.docker_not_found":   "docker not found — install Docker Desktop or Docker Engine",
+  "doctor.docker_not_running": "docker returned non-zero — is the Docker daemon running?",
+  "doctor.docker_error":       "Unexpected error: {error}",
+
+  "doctor.compose_ok":        "{version}",
+  "doctor.compose_not_found": "docker compose (v2) not found — update Docker or install the Compose plugin",
+  "doctor.compose_error":     "Unexpected error: {error}",
+
+  "doctor.compose_file_missing":       "file not found: {file}",
+  "doctor.compose_valid_ok":           "no errors detected",
+  "doctor.compose_valid_fail":         "docker compose config reported errors",
+  "doctor.compose_valid_skip_no_docker": "skipped (docker not available)",
+  "doctor.compose_valid_error":        "Unexpected error: {error}",
+
+  "doctor.env_skip_no_compose": "skipped (compose file not found)",
+  "doctor.env_no_vars":         "no \\${VAR} references found",
+  "doctor.env_ok":              "all {count} variable(s) resolved",
+  "doctor.env_missing":         "{count} variable(s) not set in .env",
+  "doctor.env_missing_var":     "  [red]•[/] [bold]{var}[/] — not defined",
+
+  "doctor.port_skip_no_compose": "skipped (compose file not found)",
+  "doctor.port_ok":              "no host-port conflicts detected",
+  "doctor.port_conflicts":       "{count} port(s) already in use on the host",
+  "doctor.port_busy_entry":      "  [red]•[/] [bold]{service}[/] → port [yellow]{port}[/] is busy",
+
+  "doctor.deps_skip_no_compose": "skipped (compose file not found)",
+  "doctor.deps_ok":              "all depends_on references are valid",
+  "doctor.deps_dangling":        "{count} dangling depends_on reference(s)",
+  "doctor.deps_dangling_entry":  "  [red]•[/] [bold]{service}[/] depends on [yellow]{dep}[/] (not defined)",
+
+  "doctor.companion_skip_no_compose": "skipped (compose file not found)",
+  "doctor.companion_ok":              "all bind-mounted files exist",
+  "doctor.companion_missing":         "{count} file(s) referenced but not found on disk",
+  "doctor.companion_missing_entry":   "  [yellow]•[/] [bold]{service}[/] → [dim]{path}[/]"
 }
 
