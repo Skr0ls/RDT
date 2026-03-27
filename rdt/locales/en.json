@@ -265,6 +265,48 @@
   "doctor.companion_skip_no_compose": "skipped (compose file not found)",
   "doctor.companion_ok":              "all bind-mounted files exist",
   "doctor.companion_missing":         "{count} file(s) referenced but not found on disk",
-  "doctor.companion_missing_entry":   "  [yellow]•[/] [bold]{service}[/] → [dim]{path}[/]"
+  "doctor.companion_missing_entry":   "  [yellow]•[/] [bold]{service}[/] → [dim]{path}[/]",
+
+  "cmd.remove.help": "Remove a service from docker-compose.yml.\n\nOptionally cleans up associated ENV variables and companion files.",
+  "cmd.remove.arg_service": "Service name to remove (key in docker-compose.yml services)",
+  "cmd.remove.opt_file": "Path to docker-compose.yml",
+  "cmd.remove.opt_yes": "Skip confirmation prompts",
+  "cmd.remove.opt_clean_env": "Remove ENV variables that are only used by this service",
+  "cmd.remove.opt_clean_artifacts": "Remove companion files/dirs associated with this service",
+  "menu.remove": "🗑️  Remove service (rdt remove)",
+
+  "remove.header": "\n[bold red]🗑️  RDT Remove — removing service: [cyan]{service}[/][/]\n",
+  "remove.service_not_found": "[red]✗[/] Service [bold]{service}[/] not found in [bold]{file}[/].\nAvailable: {available}",
+  "remove.no_services": "[yellow]⚠[/] No services defined in [bold]{file}[/].",
+  "remove.compose_not_found": "[red]✗[/] File [bold]{file}[/] not found. Nothing to remove.",
+
+  "remove.dependents_warn": "[yellow]⚠  The following services depend on [bold]{service}[/] and may break:[/]",
+  "remove.dependents_entry": "  [yellow]•[/] [bold]{dependent}[/]",
+  "remove.dependents_note": "[dim]  Dangling depends_on references will remain in compose — remove them manually or via rdt doctor.[/]",
+
+  "remove.plan_header": "\n[bold]📋 Planned changes:[/]",
+  "remove.plan_service": "  [red]✦[/] Remove service [bold cyan]{service}[/] from [bold]{file}[/]",
+  "remove.plan_volume": "  [red]✦[/] Remove named volume [bold]{volume}[/] (no longer used)",
+  "remove.plan_env_var": "  [red]✦[/] Remove ENV var [bold]{var}[/] from [bold]{file}[/]",
+  "remove.plan_artifact": "  [red]✦[/] Delete companion file [bold]{path}[/]",
+  "remove.plan_env_skip": "  [dim]–[/] ENV vars: no orphaned variables found",
+  "remove.plan_artifact_skip": "  [dim]–[/] Companion files: none to remove",
+  "remove.plan_no_changes": "[dim]  No additional cleanup required.[/]",
+
+  "remove.confirm": "Proceed with removal?",
+  "remove.cancelled": "[dim]Cancelled.[/]",
+
+  "remove.done": "\n[bold green]✓ Service [cyan]{service}[/] removed successfully.[/]",
+  "remove.compose_saved": "[green]✓[/] Saved [bold]{file}[/]",
+  "remove.volume_removed": "[green]✓[/] Removed named volume [bold]{volume}[/] from compose",
+  "remove.env_var_removed": "[green]✓[/] Removed ENV var [bold]{var}[/]",
+  "remove.env_file_cleaned": "[green]✓[/] Cleaned [bold]{file}[/] — removed {count} variable(s)",
+  "remove.artifact_removed": "[green]✓[/] Deleted companion file [bold]{path}[/]",
+  "remove.artifact_not_found": "[dim]–[/] Companion file not found (already absent): [bold]{path}[/]",
+  "remove.artifact_error": "[yellow]⚠[/] Could not delete [bold]{path}[/]: {error}",
+
+  "remove.ask_service": "Which service do you want to remove?",
+  "remove.ask_clean_env": "Remove orphaned ENV variables from .env?",
+  "remove.ask_clean_artifacts": "Delete companion files/dirs for this service?"
 }
 

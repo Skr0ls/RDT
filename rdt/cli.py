@@ -6,7 +6,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import questionary
 import typer
@@ -17,8 +17,15 @@ from rich import box
 from rdt.presets.catalog import ALL_PRESETS, ServicePreset
 from rdt.strategies.base import NETWORK_NAME
 from rdt.strategies.factory import get_strategy
-from rdt.yaml_manager import load_compose, save_compose, make_base_compose, inject_service, get_existing_services, get_services_with_healthcheck
-from rdt.env_manager import get_env_values, write_env, write_env_example
+from rdt.yaml_manager import (
+    load_compose, save_compose, make_base_compose, inject_service,
+    get_existing_services, get_services_with_healthcheck,
+    get_dependents, remove_service, get_service_named_volumes,
+)
+from rdt.env_manager import (
+    get_env_values, write_env, write_env_example,
+    find_orphaned_vars, remove_vars_from_env_file,
+)
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
 from rdt.artifacts import (
     ArtifactContext, ArtifactPipeline, ArtifactPlan, ArtifactResult, PreflightIssue,
@@ -95,6 +102,12 @@ def _run_interactive(ctx: typer.Context) -> None:
                     add(service=service_name)
                 except SystemExit:
                     pass
+
+        elif action == "remove":
+            try:
+                remove()
+            except SystemExit:
+                pass
 
         elif action == "lang":
             _change_language()
@@ -587,6 +600,185 @@ def check(
             console.print(result.stderr.strip())
         console.print(t("msg.check_fail", file=file))
         raise typer.Exit(result.returncode)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# rdt remove
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_artifact_paths_for_service(service_name: str, project_root: Path) -> list[Path]:
+    """Вернуть список companion-файлов для сервиса, которые существуют на диске.
+
+    Берёт список артефактов из пресета (если он есть) и возвращает
+    только те файлы, что физически присутствуют в project_root.
+    """
+    preset = ALL_PRESETS.get(service_name)
+    if preset is None or not preset.artifacts:
+        return []
+    paths: list[Path] = []
+    for artifact_def in preset.artifacts:
+        candidate = project_root / artifact_def.relative_path
+        if candidate.exists():
+            paths.append(candidate)
+    return paths
+
+
+@app.command(name="remove", help=t("cmd.remove.help"))
+def remove(
+    service: Annotated[Optional[str], typer.Argument(help=t("cmd.remove.arg_service"))] = None,
+    file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.remove.opt_file"))] = COMPOSE_FILE,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help=t("cmd.remove.opt_yes"))] = False,
+    clean_env: Annotated[bool, typer.Option("--clean-env", help=t("cmd.remove.opt_clean_env"))] = False,
+    clean_artifacts: Annotated[bool, typer.Option("--clean-artifacts", help=t("cmd.remove.opt_clean_artifacts"))] = False,
+) -> None:
+    # ── 1. Проверить существование compose-файла ─────────────────────────────
+    if not file.exists():
+        console.print(t("remove.compose_not_found", file=file))
+        raise typer.Exit(1)
+
+    project_root = _resolve_project_root(file)
+    env_file = project_root / ".env"
+    env_example_file = project_root / ".env.example"
+
+    data = load_compose(file)
+    existing = get_existing_services(data)
+
+    if not existing:
+        console.print(t("remove.no_services", file=file))
+        raise typer.Exit(1)
+
+    # ── 2. Выбор сервиса (интерактивно или аргумент) ─────────────────────────
+    if service is None:
+        # Интерактивный выбор
+        from rdt.wizard import ask_remove_service_choice
+        service = ask_remove_service_choice(existing)
+        if not service:
+            console.print(t("remove.cancelled"))
+            raise typer.Exit(0)
+    else:
+        service = service.lower()
+
+    if service not in existing:
+        console.print(t("remove.service_not_found", service=service, file=file,
+                        available=", ".join(existing)))
+        raise typer.Exit(1)
+
+    console.print(t("remove.header", service=service))
+
+    # ── 3. Предупреждение о зависимых сервисах ───────────────────────────────
+    dependents = get_dependents(data, service)
+    if dependents:
+        console.print(t("remove.dependents_warn", service=service))
+        for dep in dependents:
+            console.print(t("remove.dependents_entry", dependent=dep))
+        console.print(t("remove.dependents_note"))
+        console.print()
+
+    # ── 4. Анализ: orphaned ENV vars ─────────────────────────────────────────
+    orphaned_vars: set[str] = set()
+    if clean_env or not yes:
+        orphaned_vars = find_orphaned_vars(data, service)
+
+    # ── 5. Анализ: companion файлы ───────────────────────────────────────────
+    artifact_paths: list[Path] = []
+    if clean_artifacts or not yes:
+        artifact_paths = _get_artifact_paths_for_service(service, project_root)
+
+    # ── 6. Интерактивные вопросы (если не --yes) ─────────────────────────────
+    if not yes:
+        if orphaned_vars and not clean_env:
+            clean_env = questionary.confirm(
+                t("remove.ask_clean_env"),
+                default=True,
+            ).ask() or False
+
+        if artifact_paths and not clean_artifacts:
+            clean_artifacts = questionary.confirm(
+                t("remove.ask_clean_artifacts"),
+                default=False,
+            ).ask() or False
+
+    # ── 7. Показать план ─────────────────────────────────────────────────────
+    console.print(t("remove.plan_header"))
+    console.print(t("remove.plan_service", service=service, file=file))
+
+    # Named volumes (рассчитать предварительно)
+    preview_volumes = _preview_orphaned_volumes(data, service)
+    for vol in preview_volumes:
+        console.print(t("remove.plan_volume", volume=vol))
+
+    if clean_env and orphaned_vars:
+        for var in sorted(orphaned_vars):
+            console.print(t("remove.plan_env_var", var=var, file=env_file))
+    elif not orphaned_vars:
+        console.print(t("remove.plan_env_skip"))
+    else:
+        console.print(t("remove.plan_env_skip"))
+
+    if clean_artifacts and artifact_paths:
+        for p in artifact_paths:
+            console.print(t("remove.plan_artifact", path=str(p)))
+    else:
+        console.print(t("remove.plan_artifact_skip"))
+
+    console.print()
+
+    # ── 8. Финальное подтверждение ───────────────────────────────────────────
+    if not yes:
+        confirmed = questionary.confirm(t("remove.confirm"), default=False).ask()
+        if not confirmed:
+            console.print(t("remove.cancelled"))
+            raise typer.Exit(0)
+
+    # ── 9. ПРИМЕНЕНИЕ ────────────────────────────────────────────────────────
+
+    # Удалить сервис + orphaned named volumes из compose
+    data, removed_volumes = remove_service(data, service)
+    save_compose(file, data)
+    console.print(t("remove.compose_saved", file=file))
+    for vol in removed_volumes:
+        console.print(t("remove.volume_removed", volume=vol))
+
+    # Очистить ENV
+    if clean_env and orphaned_vars:
+        removed_count = remove_vars_from_env_file(env_file, orphaned_vars)
+        remove_vars_from_env_file(env_example_file, orphaned_vars)
+        if removed_count:
+            console.print(t("remove.env_file_cleaned", file=env_file, count=removed_count))
+
+    # Удалить companion-файлы
+    if clean_artifacts and artifact_paths:
+        for p in artifact_paths:
+            try:
+                if p.exists():
+                    if p.is_file():
+                        p.unlink()
+                    else:
+                        import shutil
+                        shutil.rmtree(p)
+                    console.print(t("remove.artifact_removed", path=str(p)))
+                else:
+                    console.print(t("remove.artifact_not_found", path=str(p)))
+            except Exception as exc:
+                console.print(t("remove.artifact_error", path=str(p), error=str(exc)))
+
+    console.print(t("remove.done", service=service))
+
+
+def _preview_orphaned_volumes(data: Any, service_name: str) -> list[str]:
+    """Список named volumes, которые станут осиротевшими после удаления сервиса."""
+    service_volumes = get_service_named_volumes(data, service_name)
+    still_used: set[str] = set()
+    for svc_name, svc_def in (data.get("services") or {}).items():
+        if svc_name == service_name:
+            continue
+        for vol in (svc_def or {}).get("volumes", []):
+            vol_str = str(vol)
+            if ":" in vol_str:
+                source = vol_str.split(":")[0]
+                if not source.startswith(".") and not source.startswith("/"):
+                    still_used.add(source)
+    return [v for v in service_volumes if v not in still_used]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

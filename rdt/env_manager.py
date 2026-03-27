@@ -130,6 +130,86 @@ def write_env(env_path: Path, values: dict[str, str]) -> None:
             f.write(f"{k}={v}\n")
 
 
+def extract_vars_from_text(text: str) -> set[str]:
+    """Извлечь все имена переменных вида ${VAR} из произвольного текста."""
+    return set(_VAR_PATTERN.findall(text))
+
+
+def get_service_env_vars(data: Any, service_name: str) -> set[str]:
+    """Вернуть все ${VAR} переменные, используемые конкретным сервисом в compose-данных."""
+    import io
+    try:
+        from ruamel.yaml import YAML
+        y = YAML()
+        buf = io.StringIO()
+        svc_block = (data.get("services") or {}).get(service_name)
+        if svc_block is None:
+            return set()
+        y.dump({"tmp": svc_block}, buf)
+        return extract_vars_from_text(buf.getvalue())
+    except Exception:
+        return set()
+
+
+def get_all_env_vars_except(data: Any, exclude_service: str) -> set[str]:
+    """Вернуть все ${VAR} переменные, используемые всеми сервисами КРОМЕ указанного."""
+    import io
+    result: set[str] = set()
+    try:
+        from ruamel.yaml import YAML
+        y = YAML()
+        for svc_name, svc_block in (data.get("services") or {}).items():
+            if svc_name == exclude_service:
+                continue
+            if svc_block is None:
+                continue
+            buf = io.StringIO()
+            y.dump({"tmp": svc_block}, buf)
+            result |= extract_vars_from_text(buf.getvalue())
+    except Exception:
+        pass
+    return result
+
+
+def find_orphaned_vars(
+    data: Any,
+    service_name: str,
+) -> set[str]:
+    """Найти переменные ${VAR}, которые используются только удаляемым сервисом.
+
+    Возвращает множество имён переменных, которые безопасно удалить из .env.
+    """
+    service_vars = get_service_env_vars(data, service_name)
+    remaining_vars = get_all_env_vars_except(data, exclude_service=service_name)
+    return service_vars - remaining_vars
+
+
+def remove_vars_from_env_file(env_path: Path, vars_to_remove: set[str]) -> int:
+    """Удалить указанные переменные из .env файла (in-place).
+
+    Возвращает количество удалённых строк.
+    """
+    if not env_path.exists() or not vars_to_remove:
+        return 0
+
+    lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    new_lines = []
+    removed = 0
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in vars_to_remove:
+                removed += 1
+                continue
+        new_lines.append(line)
+
+    # Убрать trailing пустые строки, добавленные при write_env
+    content = "".join(new_lines).rstrip("\n") + "\n" if new_lines else ""
+    env_path.write_text(content, encoding="utf-8")
+    return removed
+
+
 def write_env_example(example_path: Path, values: dict[str, str]) -> None:
     """Записать/обновить .env.example с пустыми значениями."""
     existing_keys: set[str] = set()

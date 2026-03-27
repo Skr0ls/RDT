@@ -140,6 +140,69 @@ def get_existing_services(data: CommentedMap) -> list[str]:
     return list(data.get("services", {}).keys())
 
 
+def get_dependents(data: CommentedMap, service_name: str) -> list[str]:
+    """Вернуть список сервисов, которые зависят от service_name через depends_on."""
+    result: list[str] = []
+    for svc_name, svc_def in (data.get("services") or {}).items():
+        if svc_name == service_name:
+            continue
+        depends = (svc_def or {}).get("depends_on", [])
+        if isinstance(depends, dict):
+            depends = list(depends.keys())
+        if service_name in (depends or []):
+            result.append(svc_name)
+    return result
+
+
+def get_service_named_volumes(data: CommentedMap, service_name: str) -> set[str]:
+    """Вернуть именованные volumes (не bind-mount), используемые указанным сервисом."""
+    result: set[str] = set()
+    svc_def = (data.get("services") or {}).get(service_name) or {}
+    for vol in svc_def.get("volumes", []):
+        vol_str = str(vol)
+        if ":" in vol_str:
+            source = vol_str.split(":")[0]
+            if not source.startswith(".") and not source.startswith("/"):
+                result.add(source)
+    return result
+
+
+def remove_service(data: CommentedMap, service_name: str) -> tuple[CommentedMap, list[str]]:
+    """Удалить сервис из compose-данных.
+
+    Возвращает (обновлённые данные, список удалённых named volumes).
+    Named volume удаляется только если больше не используется другими сервисами.
+    """
+    if "services" not in data or service_name not in data["services"]:
+        return data, []
+
+    # Запомнить именованные volumes удаляемого сервиса
+    service_volumes = get_service_named_volumes(data, service_name)
+
+    # Удалить сервис
+    del data["services"][service_name]
+
+    # Найти volumes, всё ещё используемые оставшимися сервисами
+    still_used: set[str] = set()
+    for _, svc_def in (data.get("services") or {}).items():
+        for vol in (svc_def or {}).get("volumes", []):
+            vol_str = str(vol)
+            if ":" in vol_str:
+                source = vol_str.split(":")[0]
+                if not source.startswith(".") and not source.startswith("/"):
+                    still_used.add(source)
+
+    # Удалить осиротевшие named volumes из секции volumes
+    removed_volumes: list[str] = []
+    for vol_name in service_volumes:
+        if vol_name not in still_used:
+            if "volumes" in data and vol_name in data["volumes"]:
+                del data["volumes"][vol_name]
+                removed_volumes.append(vol_name)
+
+    return data, removed_volumes
+
+
 def get_services_with_healthcheck(data: CommentedMap) -> set[str]:
     """Вернуть множество имён сервисов, у которых задан healthcheck."""
     result: set[str] = set()

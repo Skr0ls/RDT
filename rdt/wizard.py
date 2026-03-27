@@ -607,15 +607,16 @@ def run_main_menu() -> str:
     choice = questionary.select(
         t("menu.question"),
         choices=[
-            questionary.Choice(t("menu.add"),   value="add"),
-            questionary.Choice(t("menu.init"),  value="init"),
-            questionary.Choice(t("menu.list"),  value="list"),
-            questionary.Choice(t("menu.up"),    value="up"),
+            questionary.Choice(t("menu.add"),    value="add"),
+            questionary.Choice(t("menu.remove"), value="remove"),
+            questionary.Choice(t("menu.init"),   value="init"),
+            questionary.Choice(t("menu.list"),   value="list"),
+            questionary.Choice(t("menu.up"),     value="up"),
             questionary.Choice(t("menu.check"),  value="check"),
             questionary.Choice(t("menu.doctor"), value="doctor"),
             questionary.Choice(t("menu.lang"),   value="lang"),
-            questionary.Choice(t("menu.help"),  value="help"),
-            questionary.Choice(t("menu.exit"),  value="exit"),
+            questionary.Choice(t("menu.help"),   value="help"),
+            questionary.Choice(t("menu.exit"),   value="exit"),
         ],
         use_indicator=True,
     ).ask()
@@ -648,6 +649,25 @@ def ask_service_choice() -> str | None:
 
     selected = questionary.select(
         t("menu.service_choice"),
+        choices=choices,
+    ).ask()
+
+    return selected
+
+
+def ask_remove_service_choice(existing_services: list[str]) -> str | None:
+    """
+    Показать список существующих сервисов и вернуть выбранный для удаления
+    (или None если пользователь выбрал «Назад»).
+    """
+    choices: list = []
+    for svc in existing_services:
+        choices.append(questionary.Choice(svc, value=svc))
+    choices.append(questionary.Separator("─" * 36))
+    choices.append(questionary.Choice(t("menu.back"), value=None))
+
+    selected = questionary.select(
+        t("remove.ask_service"),
         choices=choices,
     ).ask()
 
