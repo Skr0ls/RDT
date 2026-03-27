@@ -530,13 +530,23 @@ PROMETHEUS = ServicePreset(
     default_port=9090,
     container_port=9090,
     default_env={},
-    volumes=["{{ volume_source }}:/prometheus", "./prometheus.yml:/etc/prometheus/prometheus.yml:ro"],
+    volumes=["{{ volume_source }}:/prometheus", "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"],
     healthcheck={
         "test": ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy | grep -q 'Prometheus'"],
         "interval": "10s", "timeout": "5s", "retries": 5,
     },
     deploy_limits={"cpus": "0.5", "memory": "256M"},
     strategy="monitoring",
+    artifacts=[
+        ArtifactDef(
+            relative_path="prometheus/prometheus.yml",
+            source_template="prometheus/prometheus.yml.j2",
+            overwrite=OverwritePolicy.SKIP,
+        ),
+    ],
+    scaffolds=[
+        DirectoryDef(relative_path="prometheus"),
+    ],
 )
 
 GRAFANA = ServicePreset(
