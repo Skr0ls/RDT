@@ -1163,3 +1163,290 @@ def test_seq_preset_has_bootstrap_hint() -> None:
     """SEQ пресет содержит bootstrap-подсказку."""
     from rdt.presets.catalog import SEQ
     assert len(SEQ.bootstrap_hints) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Filebeat preset integration
+# ---------------------------------------------------------------------------
+
+def test_filebeat_preset_exists() -> None:
+    """FILEBEAT пресет присутствует в каталоге и имеет правильные базовые поля."""
+    from rdt.presets.catalog import ALL_PRESETS, FILEBEAT
+    assert "filebeat" in ALL_PRESETS
+    assert ALL_PRESETS["filebeat"] is FILEBEAT
+    assert FILEBEAT.display_name == "Filebeat"
+    assert FILEBEAT.default_port == 5066
+    assert FILEBEAT.container_port == 5066
+
+
+def test_filebeat_preset_has_volumes() -> None:
+    """FILEBEAT пресет объявляет volumes для config и data."""
+    from rdt.presets.catalog import FILEBEAT
+    assert len(FILEBEAT.volumes) >= 2
+    volume_str = " ".join(FILEBEAT.volumes)
+    assert "filebeat.yml" in volume_str
+    assert "filebeat_data" in volume_str
+
+
+def test_filebeat_preset_has_artifacts() -> None:
+    """FILEBEAT пресет содержит 3 conditional артефакта (logstash / es / stdout)."""
+    from rdt.presets.catalog import FILEBEAT
+    assert len(FILEBEAT.artifacts) == 3
+    conditions = {a.condition for a in FILEBEAT.artifacts}
+    assert "filebeat_output_logstash" in conditions
+    assert "filebeat_output_es" in conditions
+    assert "filebeat_output_stdout" in conditions
+
+
+def test_filebeat_preset_has_scaffold() -> None:
+    """FILEBEAT пресет декларирует scaffold-директорию filebeat/."""
+    from rdt.presets.catalog import FILEBEAT
+    from rdt.artifacts import DirectoryDef
+    assert len(FILEBEAT.scaffolds) >= 1
+    assert all(isinstance(d, DirectoryDef) for d in FILEBEAT.scaffolds)
+    paths = [d.relative_path for d in FILEBEAT.scaffolds]
+    assert "filebeat" in paths
+
+
+def test_filebeat_preset_has_bootstrap_hints() -> None:
+    """FILEBEAT пресет содержит bootstrap-подсказки."""
+    from rdt.presets.catalog import FILEBEAT
+    assert len(FILEBEAT.bootstrap_hints) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Filebeat — шаблоны
+# ---------------------------------------------------------------------------
+
+FILEBEAT_ANSWERS_LOGSTASH = {
+    "filebeat_output": "logstash",
+    "filebeat_output_logstash": True,
+    "filebeat_output_es": False,
+    "filebeat_output_stdout": False,
+    "filebeat_logstash_host": "logstash:5044",
+    "filebeat_log_path": "/var/log/*.log",
+    "filebeat_kibana_host": "",
+}
+
+FILEBEAT_ANSWERS_ES = {
+    "filebeat_output": "elasticsearch",
+    "filebeat_output_logstash": False,
+    "filebeat_output_es": True,
+    "filebeat_output_stdout": False,
+    "filebeat_es_host": "elasticsearch:9200",
+    "filebeat_log_path": "/var/log/*.log",
+    "filebeat_kibana_host": "",
+}
+
+FILEBEAT_ANSWERS_STDOUT = {
+    "filebeat_output": "stdout",
+    "filebeat_output_logstash": False,
+    "filebeat_output_es": False,
+    "filebeat_output_stdout": True,
+    "filebeat_log_path": "/var/log/*.log",
+    "filebeat_kibana_host": "",
+}
+
+
+def _make_filebeat_context(base_dir: Path, answers: dict) -> ArtifactContext:
+    return ArtifactContext(
+        service_name="filebeat",
+        answers=answers,
+        env_values={},
+        project_root=base_dir,
+        compose_file=base_dir / "docker-compose.yml",
+        preset=None,
+        smart_env=answers.get("smart_env", {}),
+        depends_on=answers.get("depends_on", []),
+        parent_service=answers.get("parent_service"),
+        service_def=None,
+    )
+
+
+def test_filebeat_logstash_template_created(tmp_path: Path) -> None:
+    """filebeat-logstash.yml.j2 создаётся и содержит logstash host."""
+    artifact = ArtifactDef(
+        relative_path="filebeat/filebeat.yml",
+        source_template="filebeat/filebeat-logstash.yml.j2",
+        condition="filebeat_output_logstash",
+        overwrite=OverwritePolicy.SKIP,
+    )
+    ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_LOGSTASH)
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    assert len(results) == 1
+    assert results[0].status == "created"
+    content = results[0].path.read_text()
+    assert "output.logstash" in content
+    assert "logstash:5044" in content
+    assert "filestream" in content
+
+
+def test_filebeat_es_template_created(tmp_path: Path) -> None:
+    """filebeat-es.yml.j2 создаётся и содержит elasticsearch host."""
+    artifact = ArtifactDef(
+        relative_path="filebeat/filebeat.yml",
+        source_template="filebeat/filebeat-es.yml.j2",
+        condition="filebeat_output_es",
+        overwrite=OverwritePolicy.SKIP,
+    )
+    ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_ES)
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    assert len(results) == 1
+    assert results[0].status == "created"
+    content = results[0].path.read_text()
+    assert "output.elasticsearch" in content
+    assert "elasticsearch:9200" in content
+
+
+def test_filebeat_stdout_template_created(tmp_path: Path) -> None:
+    """filebeat-stdout.yml.j2 создаётся для debug-режима."""
+    artifact = ArtifactDef(
+        relative_path="filebeat/filebeat.yml",
+        source_template="filebeat/filebeat-stdout.yml.j2",
+        condition="filebeat_output_stdout",
+        overwrite=OverwritePolicy.SKIP,
+    )
+    ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_STDOUT)
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    assert len(results) == 1
+    assert results[0].status == "created"
+    content = results[0].path.read_text()
+    assert "output.console" in content
+
+
+def test_filebeat_logstash_template_skipped_in_es_mode(tmp_path: Path) -> None:
+    """Логстэш-артефакт неактивен когда выбран elasticsearch-режим."""
+    artifact = ArtifactDef(
+        relative_path="filebeat/filebeat.yml",
+        source_template="filebeat/filebeat-logstash.yml.j2",
+        condition="filebeat_output_logstash",
+        overwrite=OverwritePolicy.SKIP,
+    )
+    ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_ES)
+    pipeline = ArtifactPipeline([artifact], ctx)
+    plans = pipeline.plan()
+    assert len(plans) == 0  # условие не выполнено → неактивен
+
+
+def test_filebeat_conditional_only_one_active(tmp_path: Path) -> None:
+    """Из трёх conditional артефактов активен ровно один при logstash-режиме."""
+    from rdt.presets.catalog import FILEBEAT
+    ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_LOGSTASH)
+    pipeline = ArtifactPipeline(FILEBEAT.artifacts, ctx)
+    plans = pipeline.plan()
+    assert len(plans) == 1
+    assert plans[0].artifact.condition == "filebeat_output_logstash"
+
+
+def test_filebeat_kibana_host_rendered_in_logstash_template(tmp_path: Path) -> None:
+    """setup.kibana секция появляется когда filebeat_kibana_host задан."""
+    answers = {**FILEBEAT_ANSWERS_LOGSTASH, "filebeat_kibana_host": "kibana:5601"}
+    artifact = ArtifactDef(
+        relative_path="filebeat/filebeat.yml",
+        source_template="filebeat/filebeat-logstash.yml.j2",
+        condition="filebeat_output_logstash",
+    )
+    ctx = _make_filebeat_context(tmp_path, answers)
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    content = results[0].path.read_text()
+    assert "setup.kibana" in content
+    assert "kibana:5601" in content
+
+
+def test_filebeat_kibana_section_absent_when_no_host(tmp_path: Path) -> None:
+    """setup.kibana секция отсутствует когда filebeat_kibana_host пустой."""
+    artifact = ArtifactDef(
+        relative_path="filebeat/filebeat.yml",
+        source_template="filebeat/filebeat-logstash.yml.j2",
+        condition="filebeat_output_logstash",
+    )
+    ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_LOGSTASH)
+    pipeline = ArtifactPipeline([artifact], ctx)
+    results = pipeline.run()
+
+    content = results[0].path.read_text()
+    assert "setup.kibana" not in content
+
+
+# ---------------------------------------------------------------------------
+# Filebeat smart_mapping
+# ---------------------------------------------------------------------------
+
+def test_filebeat_smart_mapping_prefers_logstash() -> None:
+    """Filebeat smart mapping выбирает Logstash при наличии и Logstash и ES."""
+    from rdt.smart_mapping import apply_smart_mapping
+    answers: dict = {}
+    result = apply_smart_mapping("filebeat", ["elasticsearch", "logstash"], answers)
+    assert result["filebeat_output"] == "logstash"
+    assert result["filebeat_output_logstash"] is True
+    assert result["filebeat_output_es"] is False
+    assert "logstash" in result["depends_on"]
+    assert result["smart_env"]["FILEBEAT_LOGSTASH_HOST"] == "logstash:5044"
+
+
+def test_filebeat_smart_mapping_falls_back_to_es() -> None:
+    """Filebeat smart mapping выбирает ES если Logstash отсутствует."""
+    from rdt.smart_mapping import apply_smart_mapping
+    answers: dict = {}
+    result = apply_smart_mapping("filebeat", ["elasticsearch", "redis"], answers)
+    assert result["filebeat_output"] == "elasticsearch"
+    assert result["filebeat_output_es"] is True
+    assert "elasticsearch" in result["depends_on"]
+    assert result["smart_env"]["FILEBEAT_ES_HOST"] == "elasticsearch:9200"
+
+
+def test_filebeat_smart_mapping_falls_back_to_opensearch() -> None:
+    """Filebeat smart mapping работает с opensearch."""
+    from rdt.smart_mapping import apply_smart_mapping
+    answers: dict = {}
+    result = apply_smart_mapping("filebeat", ["opensearch"], answers)
+    assert result["filebeat_output"] == "elasticsearch"
+    assert "opensearch" in result["depends_on"]
+
+
+def test_filebeat_smart_mapping_stdout_when_no_target() -> None:
+    """Filebeat smart mapping выбирает stdout если нет ни Logstash ни ES."""
+    from rdt.smart_mapping import apply_smart_mapping
+    answers: dict = {}
+    result = apply_smart_mapping("filebeat", ["redis", "postgres"], answers)
+    assert result["filebeat_output"] == "stdout"
+    assert result["filebeat_output_stdout"] is True
+
+
+def test_filebeat_smart_mapping_detects_kibana() -> None:
+    """Filebeat smart mapping добавляет Kibana host если Kibana присутствует."""
+    from rdt.smart_mapping import apply_smart_mapping
+    answers: dict = {}
+    result = apply_smart_mapping("filebeat", ["logstash", "kibana"], answers)
+    assert result["smart_env"]["FILEBEAT_KIBANA_HOST"] == "kibana:5601"
+    assert "kibana" in result["depends_on"]
+
+
+def test_filebeat_get_candidate_parents() -> None:
+    """get_candidate_parents возвращает Logstash / ES / OpenSearch / Kibana для filebeat."""
+    from rdt.smart_mapping import get_candidate_parents
+    existing = ["logstash", "elasticsearch", "opensearch", "kibana", "redis"]
+    candidates = get_candidate_parents("filebeat", existing)
+    assert "logstash" in candidates
+    assert "elasticsearch" in candidates
+    assert "opensearch" in candidates
+    assert "kibana" in candidates
+    assert "redis" not in candidates
+
+
+def test_filebeat_scaffold_creates_dir(tmp_path: Path) -> None:
+    """ScaffoldPipeline + FILEBEAT.scaffolds создаёт filebeat/."""
+    from rdt.artifacts import ScaffoldPipeline
+    from rdt.presets.catalog import FILEBEAT
+    sp = ScaffoldPipeline(FILEBEAT.scaffolds, tmp_path)
+    results = sp.run()
+    assert all(r.status == "created" for r in results)
+    assert (tmp_path / "filebeat").is_dir()

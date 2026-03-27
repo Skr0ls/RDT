@@ -267,6 +267,7 @@ def _ask_smart_mapping(
         "phpmyadmin": "MySQL / MariaDB",
         "mongo-express": "MongoDB",
         "logstash": "Elasticsearch / OpenSearch",
+        "filebeat": "Logstash / Elasticsearch / OpenSearch / Kibana",
         "kibana": "Elasticsearch / OpenSearch",
     }
     parent_label = labels.get(service_name, t("wizard.smart_mapping_default_label"))
@@ -433,6 +434,69 @@ def _ask_logstash_inputs(answers: dict[str, Any]) -> dict[str, Any]:
     return answers
 
 
+def _ask_filebeat_inputs(answers: dict[str, Any]) -> dict[str, Any]:
+    """Дополнительные вопросы для Filebeat: output mode, log path, optional Kibana host."""
+    console.print(t("wizard.filebeat_specific_header"))
+
+    # Output mode — если smart mapping уже выбрал режим, предлагаем его как default
+    current_output = answers.get("filebeat_output", "stdout")
+
+    output = questionary.select(
+        t("wizard.filebeat_output_mode"),
+        choices=[
+            questionary.Choice(t("wizard.filebeat_output_logstash"), value="logstash"),
+            questionary.Choice(t("wizard.filebeat_output_es"),       value="elasticsearch"),
+            questionary.Choice(t("wizard.filebeat_output_stdout"),   value="stdout"),
+        ],
+        default=current_output if current_output in ("logstash", "elasticsearch", "stdout") else "stdout",
+    ).ask()
+
+    answers["filebeat_output"] = output or "stdout"
+
+    if answers["filebeat_output"] == "logstash":
+        default_host = answers.get("filebeat_logstash_host") or \
+                       (answers.get("smart_env") or {}).get("FILEBEAT_LOGSTASH_HOST") or \
+                       "logstash:5044"
+        host = questionary.text(
+            t("wizard.filebeat_logstash_host"),
+            default=default_host,
+        ).ask()
+        answers["filebeat_logstash_host"] = (host or default_host).strip()
+
+    elif answers["filebeat_output"] == "elasticsearch":
+        default_host = answers.get("filebeat_es_host") or \
+                       (answers.get("smart_env") or {}).get("FILEBEAT_ES_HOST") or \
+                       "elasticsearch:9200"
+        host = questionary.text(
+            t("wizard.filebeat_es_host"),
+            default=default_host,
+        ).ask()
+        answers["filebeat_es_host"] = (host or default_host).strip()
+
+    # Kibana setup host (optional — auto-filled if Kibana is in the stack)
+    default_kibana = answers.get("filebeat_kibana_host") or \
+                     (answers.get("smart_env") or {}).get("FILEBEAT_KIBANA_HOST") or ""
+    kibana_host = questionary.text(
+        t("wizard.filebeat_kibana_host"),
+        default=default_kibana,
+    ).ask()
+    answers["filebeat_kibana_host"] = (kibana_host or "").strip()
+
+    # Log path
+    log_path = questionary.text(
+        t("wizard.filebeat_log_path"),
+        default="/var/log/*.log",
+    ).ask()
+    answers["filebeat_log_path"] = (log_path or "/var/log/*.log").strip()
+
+    # Set condition flags for artifact template selection
+    answers["filebeat_output_logstash"] = (answers["filebeat_output"] == "logstash")
+    answers["filebeat_output_es"] = (answers["filebeat_output"] == "elasticsearch")
+    answers["filebeat_output_stdout"] = (answers["filebeat_output"] == "stdout")
+
+    return answers
+
+
 #: Маппинг service_name → callable для service-specific wizard вопросов.
 #: Расширяйте этот словарь при добавлении новых сервисов с конфигами.
 _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
@@ -442,6 +506,7 @@ _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = 
     "apache-static": _ask_apache_static_inputs,
     "apache-php":    _ask_apache_php_inputs,
     "logstash":      _ask_logstash_inputs,
+    "filebeat":      _ask_filebeat_inputs,
 }
 
 
@@ -626,5 +691,26 @@ def _apply_service_script_defaults(preset: ServicePreset, answers: dict[str, Any
             answers.setdefault(
                 "logstash_es_host",
                 (answers.get("smart_env") or {}).get("LOGSTASH_ES_HOST", "elasticsearch:9200"),
+            )
+
+    elif preset.name == "filebeat":
+        # Output mode: если smart mapping нашёл Logstash — logstash, нашёл ES — elasticsearch, иначе stdout
+        output = answers.get("filebeat_output", "stdout")
+        answers["filebeat_output"] = output
+        answers["filebeat_output_logstash"] = (output == "logstash")
+        answers["filebeat_output_es"] = (output == "elasticsearch")
+        answers["filebeat_output_stdout"] = (output == "stdout")
+        answers.setdefault("filebeat_log_path", "/var/log/*.log")
+        answers.setdefault("filebeat_kibana_host",
+                           (answers.get("smart_env") or {}).get("FILEBEAT_KIBANA_HOST", ""))
+        if output == "logstash":
+            answers.setdefault(
+                "filebeat_logstash_host",
+                (answers.get("smart_env") or {}).get("FILEBEAT_LOGSTASH_HOST", "logstash:5044"),
+            )
+        elif output == "elasticsearch":
+            answers.setdefault(
+                "filebeat_es_host",
+                (answers.get("smart_env") or {}).get("FILEBEAT_ES_HOST", "elasticsearch:9200"),
             )
 

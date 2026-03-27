@@ -26,6 +26,7 @@ def apply_smart_mapping(
         "phpmyadmin": _phpmyadmin_mapping,
         "mongo-express": _mongo_express_mapping,
         "logstash": _logstash_mapping,
+        "filebeat": _filebeat_mapping,
         "kibana": _kibana_mapping,
     }
     handler = handlers.get(service_name)
@@ -124,6 +125,57 @@ def _logstash_mapping(existing: list[str], answers: dict) -> None:
         answers.setdefault("logstash_es_host", f"{selected}:9200")
 
 
+def _filebeat_mapping(existing: list[str], answers: dict) -> None:
+    """Filebeat → Logstash (preferred) or Elasticsearch/OpenSearch + optional Kibana setup."""
+    answers.setdefault("smart_env", {})
+
+    # Priority: Logstash > Elasticsearch/OpenSearch
+    logstash_services = [s for s in existing if "logstash" in s]
+    es_services = [s for s in existing if "elasticsearch" in s or "opensearch" in s]
+    kibana_services = [s for s in existing if "kibana" in s]
+
+    if logstash_services:
+        selected = answers.get("parent_service", logstash_services[0])
+        answers["smart_env"]["FILEBEAT_LOGSTASH_HOST"] = f"{selected}:5044"
+        answers.setdefault("filebeat_output", "logstash")
+        answers.setdefault("filebeat_logstash_host", f"{selected}:5044")
+        deps = answers.get("depends_on", [])
+        if selected not in deps:
+            deps.append(selected)
+        answers["depends_on"] = deps
+        answers["parent_service"] = selected
+
+    elif es_services:
+        selected = answers.get("parent_service", es_services[0])
+        answers["smart_env"]["FILEBEAT_ES_HOST"] = f"{selected}:9200"
+        answers.setdefault("filebeat_output", "elasticsearch")
+        answers.setdefault("filebeat_es_host", f"{selected}:9200")
+        deps = answers.get("depends_on", [])
+        if selected not in deps:
+            deps.append(selected)
+        answers["depends_on"] = deps
+        answers["parent_service"] = selected
+
+    else:
+        answers.setdefault("filebeat_output", "stdout")
+
+    # Kibana setup (optional — configure dashboard setup if Kibana is present)
+    if kibana_services:
+        kibana_svc = kibana_services[0]
+        answers["smart_env"]["FILEBEAT_KIBANA_HOST"] = f"{kibana_svc}:5601"
+        answers.setdefault("filebeat_kibana_host", f"{kibana_svc}:5601")
+        deps = answers.get("depends_on", [])
+        if kibana_svc not in deps:
+            deps.append(kibana_svc)
+        answers["depends_on"] = deps
+
+    # Set condition flags for artifact template selection
+    output = answers.get("filebeat_output", "stdout")
+    answers["filebeat_output_logstash"] = (output == "logstash")
+    answers["filebeat_output_es"] = (output == "elasticsearch")
+    answers["filebeat_output_stdout"] = (output == "stdout")
+
+
 def _kibana_mapping(existing: list[str], answers: dict) -> None:
     """Kibana → Elasticsearch/OpenSearch: ELASTICSEARCH_HOSTS + depends_on."""
     es_services = [s for s in existing if "elasticsearch" in s or "opensearch" in s]
@@ -147,6 +199,7 @@ def get_candidate_parents(service_name: str, existing_services: list[str]) -> li
         "phpmyadmin": lambda s: "mysql" in s or "mariadb" in s,
         "mongo-express": lambda s: ("mongodb" in s or "mongo" in s) and "express" not in s,
         "logstash": lambda s: "elasticsearch" in s or "opensearch" in s,
+        "filebeat": lambda s: "logstash" in s or "elasticsearch" in s or "opensearch" in s or "kibana" in s,
         "kibana": lambda s: "elasticsearch" in s or "opensearch" in s,
     }
     filt = filters.get(service_name)
