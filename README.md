@@ -8,12 +8,16 @@
 
 - **Interactive wizard** — guided prompts for port, volume, credentials, and dependencies
 - **Script mode** — fully non-interactive via flags (`--yes`, `--port`, `--volume`, etc.)
-- **20+ service presets** across 7 categories (see [Available Services](#available-services))
+- **30+ service presets** across 8 categories (see [Available Services](#available-services))
 - **Smart Mapping** — automatically detects and links related services (e.g. pgAdmin → PostgreSQL, Grafana → Prometheus)
 - **`.env` / `.env.example` generation** — credentials are written to environment files automatically
+- **Artifact generation** — config files (nginx.conf, prometheus.yml, traefik.yml, …) are scaffolded automatically
 - **Resource limits** — every service ships with sane CPU and RAM caps
 - **Healthchecks** — databases and brokers include ready-to-use healthcheck configs
+- **Service removal** — cleanly remove services, orphaned env vars, and companion files
+- **Project diagnostics** — `rdt doctor` validates your stack before you start it
 - **Multi-language UI** — English and Russian, switchable at any time
+- **Agentic Skill** — includes dedicated instructions for AI coding agents to use RDT autonomously
 
 ---
 
@@ -21,9 +25,10 @@
 
 | Category | Services |
 |---|---|
-| **Relational DB** | PostgreSQL, MySQL, MariaDB, MS SQL Server, Oracle |
+| **Web Servers** | Nginx (Reverse Proxy), Nginx (Static), Nginx (SPA), Apache (Static), Apache + PHP, Traefik |
+| **Relational DB** | PostgreSQL, MySQL, MariaDB, MS SQL Server, Oracle DB (XE) |
 | **NoSQL / Cache** | MongoDB, Redis, Valkey, Cassandra, InfluxDB |
-| **Search / Logging** | Elasticsearch, OpenSearch |
+| **Search / Logging** | Elasticsearch, OpenSearch, Logstash, Filebeat, Kibana, Seq |
 | **Message Brokers** | Kafka (KRaft), RabbitMQ |
 | **Identity / Auth** | Keycloak |
 | **Monitoring** | Prometheus, Grafana, Zookeeper |
@@ -186,6 +191,14 @@ rdt add mysql --yes --file infra/docker-compose.yml
 | `--volume` | | Named volume or local path for data (e.g. `./data/pg`) |
 | `--depends-on` | | Add a `depends_on` entry (repeatable) |
 | `--hardcore` | | Generate unique random credentials |
+| `--no-ports` | | Do not publish ports outside the Docker network |
+| `--network` | | Network type or name: `bridge` \| `host` \| `none` \| `<external-net>` |
+| `--container-name` | | Explicit container name |
+| `--set` | | Override any wizard answer: `key=value` (repeatable) |
+| `--hc-interval` | | Healthcheck interval (e.g. `10s`) |
+| `--hc-timeout` | | Healthcheck timeout (e.g. `5s`) |
+| `--hc-retries` | | Healthcheck retry count |
+| `--hc-start-period` | | Healthcheck start period (e.g. `30s`) |
 | `--file` | `-f` | Path to the compose file (default: `docker-compose.yml`) |
 
 ---
@@ -212,6 +225,62 @@ rdt up --file infra/docker-compose.yml
 
 ---
 
+#### `rdt remove <service>` — Remove a service
+
+Removes a service block from `docker-compose.yml`, optionally cleaning up orphaned `.env` variables and companion config files.
+
+```bash
+# Interactive — picks the service from a list
+rdt remove
+
+# Remove a specific service
+rdt remove postgres
+
+# Also remove orphaned .env variables
+rdt remove postgres --clean-env
+
+# Also remove companion config files (e.g. prometheus/prometheus.yml)
+rdt remove postgres --clean-artifacts
+
+# Skip all confirmation prompts
+rdt remove postgres --yes --clean-env --clean-artifacts
+
+# Target a custom compose file
+rdt remove postgres --file infra/docker-compose.yml
+```
+
+| Flag | Short | Description |
+|---|---|---|
+| `--yes` | `-y` | Skip confirmation prompts |
+| `--clean-env` | | Remove orphaned `.env` / `.env.example` variables |
+| `--clean-artifacts` | | Delete companion config files generated for the service |
+| `--file` | `-f` | Path to the compose file (default: `docker-compose.yml`) |
+
+---
+
+#### `rdt doctor` — Diagnose your project
+
+Runs a full health check of your Docker project and reports any issues before you start the stack.
+
+```bash
+rdt doctor                           # check the default docker-compose.yml
+rdt doctor --file infra/compose.yml  # check a custom file
+```
+
+Checks performed:
+
+| Check | What it verifies |
+|---|---|
+| Docker | Docker daemon is reachable |
+| Compose | Docker Compose v2 is available |
+| Compose valid | File passes `docker compose config` |
+| Env vars | All `${VAR}` references in the compose file are set in `.env` |
+| Port conflicts | Mapped host ports are not already in use |
+| Dangling deps | `depends_on` references only existing services |
+| Companion files | Bind-mounted config files exist on disk |
+
+---
+
 #### `rdt lang` — Change the interface language
 
 ```bash
@@ -226,6 +295,18 @@ The language preference is stored in `~/.rdt/config.json` and can also be overri
 ```bash
 RDT_LANG=en rdt add postgres
 ```
+
+---
+
+## 🤖 AI Agent Integration
+
+RDT is fully compatible with AI coding assistants (Cursor, GitHub Copilot, Augment, etc.) and autonomous agents.
+
+To enable your AI agent to independently scaffold and manage Docker environments using RDT, just point it to the provided skill file:
+
+[**`rdt-skill.md`**](./docs/skills/rdt-skill.md)
+
+> This file contains precise instructions, API rules, and a catalog reference specifically formatted for LLMs. Give your agent access to this file and ask it to "Initialize a Postgres + Redis backend stack using the rules in rdt-skill.md".
 
 ---
 
@@ -262,6 +343,20 @@ In interactive mode you are asked to confirm; in `--yes` / script mode the first
 rdt init
 rdt add postgres --yes --port 5432 --volume ./data/pg
 rdt add pgadmin  --yes
+rdt doctor   # validate before starting
 rdt up
 ```
 
+```bash
+# Spin up a full monitoring stack (Prometheus + Grafana)
+rdt init
+rdt add prometheus --yes
+rdt add grafana    --yes
+rdt check    # verify compose syntax
+rdt up
+```
+
+```bash
+# Remove a service and clean up its files
+rdt remove postgres --yes --clean-env --clean-artifacts
+```

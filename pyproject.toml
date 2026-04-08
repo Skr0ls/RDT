@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rdt-rambo"
-version = "2.0.0"
+version = "2.0.1"
 description = "Rambo Docker Tools — CLI for docker-compose generation"
 readme = "README.md"
 license = "MIT"

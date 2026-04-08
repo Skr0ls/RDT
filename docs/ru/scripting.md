@@ -16,6 +16,8 @@
 - [rdt list](#rdt-list)
 - [rdt up](#rdt-up)
 - [rdt check](#rdt-check)
+- [rdt remove](#rdt-remove)
+- [rdt doctor](#rdt-doctor)
 - [rdt lang](#rdt-lang)
 - [Типичный сценарий](#типичный-сценарий)
 
@@ -91,6 +93,7 @@ rdt add <SERVICE> [OPTIONS]
 | `--hc-timeout` | — | `TEXT` | по пресету | Таймаут healthcheck (например: `5s`) |
 | `--hc-retries` | — | `INT` | по пресету | Количество попыток healthcheck |
 | `--hc-start-period` | — | `TEXT` | по пресету | Начальный период healthcheck (например: `30s`) |
+| `--set` | — | `TEXT` (повтор) | — | Переопределить любой ответ мастера в формате `key=value`; флаг можно указать несколько раз |
 
 ### Поведение сети (`--network`)
 
@@ -133,6 +136,9 @@ rdt add postgres --yes --hc-interval 15s --hc-timeout 10s --hc-retries 3 --hc-st
 
 # Указать нестандартный путь к compose-файлу
 rdt add mysql --yes --file infra/compose.yml
+
+# Переопределить ответы мастера через --set (например, для Nginx upstream)
+rdt add nginx-proxy --yes --set nginx_upstream=app:8080 --set nginx_server_name=example.com
 ```
 
 ---
@@ -208,6 +214,83 @@ rdt check --file infra/compose.yml
 
 ---
 
+## rdt remove
+
+Удаляет сервис из `docker-compose.yml`.
+Опционально очищает осиротевшие переменные окружения и companion-файлы конфигурации.
+
+```bash
+rdt remove [SERVICE] [OPTIONS]
+```
+
+**`[SERVICE]`** — имя сервиса (необязательно). Если не указано, отображается интерактивный список.
+
+| Флаг | Короткий | Тип | По умолчанию | Описание |
+|------|----------|-----|--------------|----------|
+| `--yes` | `-y` | `bool` | `False` | Пропустить все подтверждения |
+| `--file` | `-f` | `PATH` | `docker-compose.yml` | Путь к compose-файлу |
+| `--clean-env` | — | `bool` | `False` | Удалить осиротевшие переменные из `.env` / `.env.example` |
+| `--clean-artifacts` | — | `bool` | `False` | Удалить companion-файлы конфигурации сервиса |
+
+### Примеры
+
+```bash
+# Интерактивный выбор сервиса
+rdt remove
+
+# Удалить конкретный сервис (с подтверждением)
+rdt remove postgres
+
+# Удалить и очистить переменные окружения
+rdt remove postgres --clean-env
+
+# Удалить, очистить env и companion-файлы без подтверждений
+rdt remove postgres --yes --clean-env --clean-artifacts
+
+# Указать нестандартный compose-файл
+rdt remove mysql --file infra/compose.yml
+```
+
+---
+
+## rdt doctor
+
+Запускает полную диагностику Docker-проекта и выводит отчёт.
+
+```bash
+rdt doctor [OPTIONS]
+```
+
+| Флаг | Короткий | Тип | По умолчанию | Описание |
+|------|----------|-----|--------------|----------|
+| `--file` | `-f` | `PATH` | `docker-compose.yml` | Путь к compose-файлу |
+
+### Выполняемые проверки
+
+| Проверка | Что проверяется |
+|----------|----------------|
+| `docker` | Docker daemon доступен |
+| `compose` | Docker Compose v2 доступен |
+| `compose_valid` | Файл проходит `docker compose config` |
+| `env_vars` | Все `${VAR}` в compose заданы в `.env` |
+| `port_conflicts` | Прокинутые host-порты не заняты |
+| `dangling_deps` | `depends_on` ссылается только на существующие сервисы |
+| `companion_files` | Bind-mounted файлы конфигурации существуют на диске |
+
+Возвращает **код 0** при отсутствии ошибок; **ненулевой код** если есть проверки со статусом `error`.
+
+### Примеры
+
+```bash
+# Проверить файл по умолчанию
+rdt doctor
+
+# Проверить нестандартный файл
+rdt doctor --file infra/compose.yml
+```
+
+---
+
 ## rdt lang
 
 Управляет языком интерфейса RDT.
@@ -269,10 +352,12 @@ rdt add redis --yes --no-ports --depends-on postgres
 # 4. Добавить pgAdmin, подключённый к postgres
 rdt add pgadmin --yes --depends-on postgres
 
-# 5. Проверить конфиг
+# 5. Запустить диагностику (env-переменные, порты, companion-файлы)
+rdt doctor
+
+# 6. Проверить синтаксис compose
 rdt check
 
-# 6. Запустить стек
+# 7. Запустить стек
 rdt up
 ```
-

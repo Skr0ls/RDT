@@ -16,6 +16,8 @@
 - [rdt list](#rdt-list)
 - [rdt up](#rdt-up)
 - [rdt check](#rdt-check)
+- [rdt remove](#rdt-remove)
+- [rdt doctor](#rdt-doctor)
 - [rdt lang](#rdt-lang)
 - [Typical Workflow](#typical-workflow)
 
@@ -91,6 +93,7 @@ rdt add <SERVICE> [OPTIONS]
 | `--hc-timeout` | — | `TEXT` | preset value | Healthcheck timeout (e.g. `5s`) |
 | `--hc-retries` | — | `INT` | preset value | Healthcheck retry count |
 | `--hc-start-period` | — | `TEXT` | preset value | Healthcheck start period (e.g. `30s`) |
+| `--set` | — | `TEXT` (repeat) | — | Override any wizard answer as `key=value`; can be specified multiple times |
 
 ### Network behaviour (`--network`)
 
@@ -133,6 +136,9 @@ rdt add postgres --yes --hc-interval 15s --hc-timeout 10s --hc-retries 3 --hc-st
 
 # Specify a custom compose file path
 rdt add mysql --yes --file infra/compose.yml
+
+# Override wizard answers with --set (e.g. for Nginx upstream)
+rdt add nginx-proxy --yes --set nginx_upstream=app:8080 --set nginx_server_name=example.com
 ```
 
 ---
@@ -208,6 +214,83 @@ Returns exit code **0** on success or a **non-zero** code on failure.
 
 ---
 
+## rdt remove
+
+Removes a service from `docker-compose.yml`.
+Optionally cleans up orphaned environment variables and companion config files.
+
+```bash
+rdt remove [SERVICE] [OPTIONS]
+```
+
+**`[SERVICE]`** — service name (optional). If omitted, an interactive list is shown.
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--yes` | `-y` | `bool` | `False` | Skip all confirmation prompts |
+| `--file` | `-f` | `PATH` | `docker-compose.yml` | Path to the compose file |
+| `--clean-env` | — | `bool` | `False` | Remove orphaned `.env` / `.env.example` variables |
+| `--clean-artifacts` | — | `bool` | `False` | Delete companion config files generated for the service |
+
+### Examples
+
+```bash
+# Interactive service selection
+rdt remove
+
+# Remove a specific service (with confirmation prompts)
+rdt remove postgres
+
+# Remove and clean up env vars
+rdt remove postgres --clean-env
+
+# Remove, clean env vars and companion files, no prompts
+rdt remove postgres --yes --clean-env --clean-artifacts
+
+# Target a custom compose file
+rdt remove mysql --file infra/compose.yml
+```
+
+---
+
+## rdt doctor
+
+Runs a full health check of your Docker project and prints a diagnostic report.
+
+```bash
+rdt doctor [OPTIONS]
+```
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--file` | `-f` | `PATH` | `docker-compose.yml` | Path to the compose file |
+
+### Checks performed
+
+| Check | What it verifies |
+|-------|-----------------|
+| `docker` | Docker daemon is reachable |
+| `compose` | Docker Compose v2 is available |
+| `compose_valid` | File passes `docker compose config` |
+| `env_vars` | All `${VAR}` references in compose are set in `.env` |
+| `port_conflicts` | Mapped host ports are not already in use |
+| `dangling_deps` | `depends_on` only references existing services |
+| `companion_files` | Bind-mounted config files exist on disk |
+
+Exit code **0** if no errors; **non-zero** if any check has `error` status.
+
+### Examples
+
+```bash
+# Check the default compose file
+rdt doctor
+
+# Check a custom compose file
+rdt doctor --file infra/compose.yml
+```
+
+---
+
 ## rdt lang
 
 Manages the RDT interface language.
@@ -269,10 +352,12 @@ rdt add redis --yes --no-ports --depends-on postgres
 # 4. Add pgAdmin connected to postgres
 rdt add pgadmin --yes --depends-on postgres
 
-# 5. Validate the config
+# 5. Run diagnostics (env vars, port conflicts, companion files)
+rdt doctor
+
+# 6. Validate the compose syntax
 rdt check
 
-# 6. Start the stack
+# 7. Start the stack
 rdt up
 ```
-
