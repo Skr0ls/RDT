@@ -18,6 +18,7 @@
 - **Project diagnostics** — `rdt doctor` validates your stack before you start it
 - **Multi-language UI** — English and Russian, switchable at any time
 - **Agentic Skill** — includes dedicated instructions for AI coding agents to use RDT autonomously
+- **MCP Server** — Model Context Protocol server (`rdt-mcp`) for native integration with Claude Desktop, Cursor, Windsurf, and any other MCP-compatible AI client
 
 ---
 
@@ -59,6 +60,9 @@ pipx ensurepath   # add pipx bin dir to PATH (restart terminal after)
 # Install RDT from PyPI
 pipx install rdt-rambo
 
+# With MCP server support
+pipx install "rdt-rambo[mcp]"
+
 # Or install directly from GitHub (no PyPI account needed)
 pipx install git+https://github.com/Skr0ls/RDT.git
 ```
@@ -70,6 +74,9 @@ pipx install git+https://github.com/Skr0ls/RDT.git
 ```bash
 # From PyPI
 pip install rdt-rambo
+
+# With MCP server support
+pip install "rdt-rambo[mcp]"
 
 # Or from GitHub
 pip install git+https://github.com/Skr0ls/RDT.git
@@ -93,8 +100,9 @@ python -m venv .venv
 # macOS / Linux
 source .venv/bin/activate
 
-# 3. Install in editable mode with all dependencies
+# 3. Install in editable mode (add [mcp] for MCP server support)
 pip install -e .
+pip install -e ".[mcp]"
 ```
 
 ---
@@ -300,13 +308,57 @@ RDT_LANG=en rdt add postgres
 
 ## 🤖 AI Agent Integration
 
-RDT is fully compatible with AI coding assistants (Cursor, GitHub Copilot, Augment, etc.) and autonomous agents.
+RDT offers two complementary ways to integrate with AI coding assistants and autonomous agents.
 
-To enable your AI agent to independently scaffold and manage Docker environments using RDT, just point it to the provided skill file:
+---
+
+### Option A — MCP Server (recommended for broad ecosystem support)
+
+The `rdt-mcp` server exposes all RDT functionality as typed [Model Context Protocol](https://modelcontextprotocol.io) tools. Any MCP-compatible client — Claude Desktop, Cursor, Windsurf, VS Code Copilot, Continue — can discover and call them directly without running shell commands.
+
+**Install with MCP support:**
+
+```bash
+pip install "rdt-rambo[mcp]"
+# or
+pipx install "rdt-rambo[mcp]"
+```
+
+**Configure your client** (example for Claude Desktop — `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "rdt": { "command": "rdt-mcp" }
+  }
+}
+```
+
+The server exposes 7 tools: `rdt_init`, `rdt_add`, `rdt_remove`, `rdt_list`, `rdt_doctor`, `rdt_check`, `rdt_up`. Each tool accepts typed parameters and returns structured JSON — no shell output to parse.
+
+→ **Full MCP documentation:** [`docs/en/mcp-server.md`](./docs/en/mcp-server.md)
+
+---
+
+### Option B — Agentic Skill (Augment / prompt-injection based clients)
+
+For AI assistants that work by injecting instructions into context (such as Augment Code), use the provided skill file:
 
 [**`rdt-skill.md`**](./docs/skills/rdt-skill.md)
 
-> This file contains precise instructions, API rules, and a catalog reference specifically formatted for LLMs. Give your agent access to this file and ask it to "Initialize a Postgres + Redis backend stack using the rules in rdt-skill.md".
+> This file contains precise instructions, API rules, and a catalog reference specifically formatted for LLMs. Point your agent to this file and ask it to "Initialize a Postgres + Redis backend stack using the rules in rdt-skill.md".
+
+---
+
+### Which to use?
+
+| | MCP Server | Skill |
+|---|---|---|
+| Works in Claude Desktop, Cursor, Windsurf | ✅ | ❌ |
+| Works in Augment Code | ✅ | ✅ |
+| Structured JSON responses | ✅ | ❌ |
+| No shell execution needed | ✅ | ❌ |
+| Zero extra dependencies | ❌ | ✅ |
 
 ---
 

@@ -1,10 +1,11 @@
 """
 CLI точка входа для RDT (Rambo Docker Tools).
 Команды: init, add, list, up, check, doctor, lang
+
+Слой ответственности: парсинг аргументов, интерактивный wizard, Rich-вывод.
+Вся бизнес-логика делегируется в rdt.core.
 """
 from __future__ import annotations
-import subprocess
-import sys
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -15,25 +16,25 @@ from rich.table import Table
 from rich import box
 
 from rdt.presets.catalog import ALL_PRESETS, ServicePreset
-from rdt.strategies.base import NETWORK_NAME
-from rdt.strategies.factory import get_strategy
 from rdt.yaml_manager import (
-    load_compose, save_compose, make_base_compose, inject_service,
-    get_existing_services, get_services_with_healthcheck,
-    get_dependents, remove_service, get_service_named_volumes,
+    load_compose,
+    get_existing_services,
+    get_services_with_healthcheck,
 )
-from rdt.env_manager import (
-    get_env_values, write_env, write_env_example,
-    find_orphaned_vars, remove_vars_from_env_file,
-)
-from rdt.wizard import run_wizard, run_main_menu, ask_service_choice, build_script_answers
-from rdt.artifacts import (
-    ArtifactContext, ArtifactPipeline, ArtifactPlan, ArtifactResult, PreflightIssue,
-    ScaffoldPipeline, ScaffoldPlan, ScaffoldResult,
-)
+from rdt.wizard import run_wizard, run_main_menu, ask_service_choice
 from rdt.i18n import t
 import rdt.i18n as i18n
-from rdt.doctor import run_all_checks, CheckResult
+from rdt.core import (
+    RdtError,
+    init as core_init,
+    add as core_add,
+    add_from_answers,
+    remove as core_remove,
+    list_presets as core_list_presets,
+    doctor as core_doctor,
+    check as core_check,
+    up as core_up,
+)
 
 app = typer.Typer(
     name="rdt",
@@ -46,13 +47,6 @@ COMPOSE_FILE = Path("docker-compose.yml")
 
 
 def _resolve_project_root(file: Path) -> Path:
-    """
-    Единое правило определения project root:
-    - если --file задан с директорией — root = директория compose-файла
-    - иначе root = текущая рабочая директория
-
-    Все выходные файлы (.env, .env.example, artifacts) строятся от этого корня.
-    """
     return file.parent.resolve()
 
 
@@ -139,114 +133,7 @@ def _change_language() -> None:
         console.print(t("lang.changed", lang=selected))
 
 
-def _do_rollback(
-    console: Console,
-    compose_file: Path,
-    compose_was_new: bool,
-    compose_snapshot: str | None,
-    env_file: Path,
-    env_existed_before: bool,
-    env_snapshot: str | None,
-    env_example_file: Path,
-    env_example_existed_before: bool,
-    env_example_snapshot: str | None,
-    scaffold_results: list[ScaffoldResult],
-    artifact_results: list[ArtifactResult],
-) -> None:
-    """Best-effort rollback: восстановить compose/env и удалить созданные файлы/директории."""
-    console.print(t("rollback.header"))
 
-    # 1. Откатить compose файл
-    try:
-        if compose_was_new:
-            if compose_file.exists():
-                compose_file.unlink()
-                console.print(t("rollback.compose_removed", file=str(compose_file)))
-        elif compose_snapshot is not None:
-            compose_file.write_text(compose_snapshot, encoding="utf-8")
-            console.print(t("rollback.compose_restored", file=str(compose_file)))
-    except Exception as exc:
-        console.print(t("rollback.warn", error=str(exc)))
-
-    # 2. Откатить .env
-    try:
-        if not env_existed_before:
-            if env_file.exists():
-                env_file.unlink()
-                console.print(t("rollback.env_removed", file=str(env_file)))
-        elif env_snapshot is not None:
-            env_file.write_text(env_snapshot, encoding="utf-8")
-            console.print(t("rollback.env_restored", file=str(env_file)))
-    except Exception as exc:
-        console.print(t("rollback.warn", error=str(exc)))
-
-    # 3. Откатить .env.example
-    try:
-        if not env_example_existed_before:
-            if env_example_file.exists():
-                env_example_file.unlink()
-                console.print(t("rollback.env_removed", file=str(env_example_file)))
-        elif env_example_snapshot is not None:
-            env_example_file.write_text(env_example_snapshot, encoding="utf-8")
-            console.print(t("rollback.env_restored", file=str(env_example_file)))
-    except Exception as exc:
-        console.print(t("rollback.warn", error=str(exc)))
-
-    # 4. Удалить созданные артефакты
-    for r in artifact_results:
-        if r.status == "created":
-            try:
-                if r.path.exists():
-                    r.path.unlink()
-                    console.print(t("rollback.artifact_removed", path=str(r.path)))
-            except Exception as exc:
-                console.print(t("rollback.warn", error=str(exc)))
-
-    # 5. Удалить созданные scaffold-директории (только пустые)
-    for r in scaffold_results:
-        if r.status == "created":
-            try:
-                if r.path.exists() and r.path.is_dir() and not any(r.path.iterdir()):
-                    r.path.rmdir()
-                    console.print(t("rollback.dir_removed", path=str(r.path)))
-            except Exception as exc:
-                console.print(t("rollback.warn", error=str(exc)))
-
-    console.print(t("rollback.done"))
-
-
-def _print_plan_summary(
-    file: Path,
-    svc_key: str,
-    env_file: Path,
-    env_values: dict,
-    artifact_plans: list[ArtifactPlan],
-    compose_file_existed: bool,
-    scaffold_plans: list[ScaffoldPlan] | None = None,
-) -> None:
-    """Вывести сводку запланированных изменений до их применения."""
-    console.print(t("plan.header"))
-    if not compose_file_existed:
-        console.print(t("plan.compose_create", file=file))
-    else:
-        console.print(t("plan.compose_add_service", name=svc_key, file=file))
-    if env_values:
-        keys = ", ".join(env_values.keys())
-        console.print(t("plan.env_write", file=env_file, keys=keys))
-    for sp in (scaffold_plans or []):
-        path_str = str(sp.target)
-        if sp.action == "create":
-            console.print(t("plan.scaffold_create", path=path_str))
-        elif sp.action == "skip":
-            console.print(t("plan.scaffold_skip", path=path_str))
-    for ap in artifact_plans:
-        path_str = str(ap.target)
-        if ap.action == "create":
-            console.print(t("plan.artifact_create", path=path_str))
-        elif ap.action == "overwrite":
-            console.print(t("plan.artifact_overwrite", path=path_str))
-        elif ap.action == "skip":
-            console.print(t("plan.artifact_skip", path=path_str))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -257,25 +144,15 @@ def init(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.init.opt_file"))] = COMPOSE_FILE,
     force: Annotated[bool, typer.Option("--force", help=t("cmd.init.opt_force"))] = False,
 ) -> None:
-    if file.exists() and not force:
-        console.print(t("msg.file_exists", file=file))
+    try:
+        result = core_init(file, force=force)
+    except RdtError as e:
+        console.print(str(e))
         raise typer.Exit(1)
 
-    project_root = _resolve_project_root(file)
-    env_file = project_root / ".env"
-    env_example_file = project_root / ".env.example"
-
-    data = make_base_compose()
-    save_compose(file, data)
-    console.print(t("msg.compose_created", file=file))
-
-    # Инициализировать .env и .env.example если не существуют
-    if not env_file.exists():
-        env_file.touch()
-        console.print(t("msg.env_created", file=env_file))
-    if not env_example_file.exists():
-        env_example_file.touch()
-        console.print(t("msg.env_created", file=env_example_file))
+    console.print(t("msg.compose_created", file=result.file))
+    for path in result.created[1:]:
+        console.print(t("msg.env_created", file=path))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -306,25 +183,7 @@ def add(
         console.print(t("msg.use_rdt_list"))
         raise typer.Exit(1)
 
-    # Загрузить compose если существует, иначе отложим создание до получения answers
-    if file.exists():
-        data = load_compose(file)
-        existing = get_existing_services(data)
-        svc_with_hc = get_services_with_healthcheck(data)
-    else:
-        data = None
-        existing = []
-        svc_with_hc = set()
-
-    # Проверить что сервис не добавлен дважды (ключ в services = preset.name)
-    svc_key = preset.name
-    if svc_key in existing:
-        console.print(t("msg.file_exists", file=f"{svc_key} in {file}"))
-        raise typer.Exit(1)
-
-    # ── Парсинг --set key=value ──────────────────────────────────────────────
-    # Позволяет переопределить любой ответ мастера без интерактивного режима.
-    # Пример: --set nginx_upstream=app:8080 --set nginx_server_name=example.com
+    # Парсинг --set key=value
     set_overrides: dict[str, str] = {}
     for param in (set_params or []):
         if "=" not in param:
@@ -333,195 +192,67 @@ def add(
         k, v = param.split("=", 1)
         set_overrides[k.strip()] = v.strip()
 
-    # Режим с мастером или без
     has_script_flags = (
         yes or port is not None or volume is not None or depends_on is not None
         or container_name_opt is not None or no_ports or network is not None
         or hc_interval is not None or hc_timeout is not None
         or hc_retries is not None or hc_start_period is not None
     )
-    if has_script_flags:
-        console.print(t("msg.adding_service_script", name=preset.display_name))
-        answers = build_script_answers(
-            preset=preset,
-            port=port,
-            volume=volume,
-            depends_on=depends_on or [],
-            hardcore=hardcore,
-            existing_services=existing,
-            container_name=container_name_opt,
-            no_ports=no_ports,
-            network=network,
-            hc_interval=hc_interval,
-            hc_timeout=hc_timeout,
-            hc_retries=hc_retries,
-            hc_start_period=hc_start_period,
-        )
-    else:
-        answers = run_wizard(preset, existing, hardcore=hardcore, services_with_healthcheck=svc_with_hc)
 
-    # Применяем --set поверх ответов мастера/скрипта
-    if set_overrides:
-        answers.update(set_overrides)
-        if set_overrides:
-            console.print(t("msg.set_overrides_applied", count=len(set_overrides)))
+    try:
+        if has_script_flags:
+            console.print(t("msg.adding_service_script", name=preset.display_name))
+            result = core_add(
+                service=service,
+                file=file,
+                port=port,
+                volume=volume,
+                depends_on=depends_on,
+                hardcore=hardcore,
+                no_ports=no_ports,
+                network=network,
+                container_name=container_name_opt,
+                hc_interval=hc_interval,
+                hc_timeout=hc_timeout,
+                hc_retries=hc_retries,
+                hc_start_period=hc_start_period,
+                set_vars=set_overrides or None,
+            )
+        else:
+            # Wizard mode — интерактивный режим остаётся в CLI
+            if file.exists():
+                data = load_compose(file)
+                existing = get_existing_services(data)
+                svc_with_hc = get_services_with_healthcheck(data)
+            else:
+                existing = []
+                svc_with_hc = set()
+            answers: dict[str, Any] = run_wizard(
+                preset, existing, hardcore=hardcore, services_with_healthcheck=svc_with_hc,
+            )
+            if set_overrides:
+                answers.update(set_overrides)
+                console.print(t("msg.set_overrides_applied", count=len(set_overrides)))
+            answers["services_with_healthcheck"] = svc_with_hc
+            result = add_from_answers(service, answers, file, hardcore=hardcore)
+    except RdtError as e:
+        console.print(str(e))
+        raise typer.Exit(1)
 
-    # Передаём в стратегию информацию о том, у каких сервисов есть healthcheck
-    answers["services_with_healthcheck"] = svc_with_hc
-
-    # ── Единый project root ──────────────────────────────────────────────────
-    # Правило: root = директория compose-файла (работает как для default так и для --file)
+    # ── Presentation ──────────────────────────────────────────────────────────
     project_root = _resolve_project_root(file)
     env_file = project_root / ".env"
-    env_example_file = project_root / ".env.example"
-
-    # ── ФАЗА ПЛАНИРОВАНИЯ (ничего не пишем на диск) ──────────────────────────
-
-    # Подготовить compose-данные в памяти
-    compose_was_new = data is None
-    if compose_was_new:
-        console.print(t("msg.compose_not_found_create", file=file))
-        net_cfg: dict = {
-            "type": answers.get("network_type", "bridge"),
-            "name": answers.get("network_name", NETWORK_NAME),
-        }
-        data = make_base_compose(network_config=net_cfg)
-
-    # Получить значения переменных окружения
-    env_values = get_env_values(preset.default_env, hardcore=hardcore or not answers.get("use_default_creds", True))
-
-    # Применить стратегию (в памяти)
-    strategy = get_strategy(preset, answers)
-    service_def = strategy.build()
-
-    # Вставить сервис в compose (в памяти, без записи на диск)
-    net_cfg = {
-        "type": answers.get("network_type", "bridge"),
-        "name": answers.get("network_name", NETWORK_NAME),
-    }
-    data = inject_service(data, svc_key, service_def, network_config=net_cfg)
-
-    # Построить scaffold-план (директории) без записи на диск
-    scaffold_pipeline: ScaffoldPipeline | None = None
-    scaffold_plans: list[ScaffoldPlan] = []
-    if preset.scaffolds:
-        scaffold_pipeline = ScaffoldPipeline(preset.scaffolds, project_root)
-        scaffold_plans = scaffold_pipeline.plan()
-
-    # Построить артефакт-план без записи на диск
-    pipeline: ArtifactPipeline | None = None
-    artifact_plans: list[ArtifactPlan] = []
-    if preset.artifacts:
-        artifact_ctx = ArtifactContext(
-            service_name=svc_key,
-            answers=answers,
-            env_values=env_values,
-            project_root=project_root,
-            compose_file=file.resolve(),
-            preset=preset,
-            smart_env=answers.get("smart_env", {}),
-            depends_on=answers.get("depends_on", []),
-            parent_service=answers.get("parent_service"),
-            service_def=service_def,
-        )
-        pipeline = ArtifactPipeline(preset.artifacts, artifact_ctx)
-
-        # Preflight-проверка до фактической записи
-        issues = pipeline.preflight()
-        if issues:
-            console.print()
-            console.print(t("artifacts.preflight.header"))
-            for issue in issues:
-                console.print(t("artifacts.preflight.issue", path=issue.artifact_path, reason=issue.reason))
-            raise typer.Exit(1)
-
-        artifact_plans = pipeline.plan()
-
-    # Вывести сводку запланированных изменений
-    _print_plan_summary(
-        file=file,
-        svc_key=svc_key,
-        env_file=env_file,
-        env_values=env_values,
-        artifact_plans=artifact_plans,
-        compose_file_existed=not compose_was_new,
-        scaffold_plans=scaffold_plans,
-    )
-
-    # ── Снимок состояния перед записью (для best-effort rollback) ────────────
-    compose_snapshot: str | None = file.read_text(encoding="utf-8") if file.exists() else None
-    env_existed_before = env_file.exists()
-    env_snapshot: str | None = env_file.read_text(encoding="utf-8") if env_existed_before else None
-    env_example_existed_before = env_example_file.exists()
-    env_example_snapshot: str | None = (
-        env_example_file.read_text(encoding="utf-8") if env_example_existed_before else None
-    )
-
-    # ── ФАЗА ПРИМЕНЕНИЯ (запись на диск) ─────────────────────────────────────
-
-    save_compose(file, data)
-    write_env(env_file, env_values)
-    write_env_example(env_example_file, env_values)
 
     console.print(t("msg.service_added", name=preset.display_name, file=file))
-    if env_values:
+    if result.env_vars:
         console.print(t("msg.env_written", file=env_file))
-
-    scaffold_results: list[ScaffoldResult] = []
-    if scaffold_pipeline is not None:
-        scaffold_results = scaffold_pipeline.apply(scaffold_plans)
-        ScaffoldPipeline.print_results(scaffold_results, console)
-
-        # Scaffold errors теперь фатальны + best-effort rollback
-        if ScaffoldPipeline.has_errors(scaffold_results):
-            console.print(t("scaffold.fatal_error"))
-            _do_rollback(
-                console=console,
-                compose_file=file,
-                compose_was_new=compose_was_new,
-                compose_snapshot=compose_snapshot,
-                env_file=env_file,
-                env_existed_before=env_existed_before,
-                env_snapshot=env_snapshot,
-                env_example_file=env_example_file,
-                env_example_existed_before=env_example_existed_before,
-                env_example_snapshot=env_example_snapshot,
-                scaffold_results=scaffold_results,
-                artifact_results=[],
-            )
-            raise typer.Exit(1)
-
-    if pipeline is not None:
-        artifact_results = pipeline.apply(artifact_plans)
-        ArtifactPipeline.print_results(artifact_results, console)
-
-        # Фатальная ошибка если хотя бы один артефакт не сгенерирован — выполнить rollback
-        if ArtifactPipeline.has_errors(artifact_results):
-            console.print(t("artifacts.fatal_error"))
-            _do_rollback(
-                console=console,
-                compose_file=file,
-                compose_was_new=compose_was_new,
-                compose_snapshot=compose_snapshot,
-                env_file=env_file,
-                env_existed_before=env_existed_before,
-                env_snapshot=env_snapshot,
-                env_example_file=env_example_file,
-                env_example_existed_before=env_example_existed_before,
-                env_example_snapshot=env_example_snapshot,
-                scaffold_results=scaffold_results,
-                artifact_results=artifact_results,
-            )
-            raise typer.Exit(1)
-
-    # Вывести bootstrap-подсказки после успешного применения
-    if preset.bootstrap_hints:
+    for path in result.artifacts_created:
+        console.print(t("plan.artifact_create", path=path))
+    if result.hints:
         console.print()
         console.print(t("bootstrap.header"))
-        for hint in preset.bootstrap_hints:
-            console.print(t("bootstrap.hint", message=hint.message))
-            if hint.command:
-                console.print(t("bootstrap.command", command=hint.command))
+        for hint in result.hints:
+            console.print(t("bootstrap.hint", message=hint))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -529,9 +260,10 @@ def add(
 # ─────────────────────────────────────────────────────────────────────────────
 @app.command(name="list", help=t("cmd.list.help"))
 def list_presets() -> None:
-    categories: dict[str, list[ServicePreset]] = {}
-    for preset in ALL_PRESETS.values():
-        categories.setdefault(preset.category, []).append(preset)
+    presets = core_list_presets()
+    categories: dict[str, list] = {}
+    for p in presets:
+        categories.setdefault(p.category, []).append(p)
 
     table = Table(title=t("table.title"), box=box.ROUNDED, show_lines=True)
     table.add_column(t("table.col_category"), style="cyan bold", no_wrap=True)
@@ -540,8 +272,8 @@ def list_presets() -> None:
     table.add_column(t("table.col_image"), style="dim")
     table.add_column(t("table.col_port"), style="yellow", justify="right")
 
-    for category, presets in categories.items():
-        for i, p in enumerate(presets):
+    for category, items in categories.items():
+        for i, p in enumerate(items):
             table.add_row(
                 category if i == 0 else "",
                 f"rdt add {p.name}",
@@ -561,17 +293,13 @@ def up(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.up.opt_file"))] = COMPOSE_FILE,
     detach: Annotated[bool, typer.Option("--detach/--no-detach", "-d", help=t("cmd.up.opt_detach"))] = True,
 ) -> None:
-    if not file.exists():
-        console.print(t("msg.compose_not_found_run", file=file))
+    try:
+        result = core_up(file, detach=detach)
+    except RdtError as e:
+        console.print(str(e))
         raise typer.Exit(1)
-
-    cmd = ["docker", "compose", "-f", str(file), "up"]
-    if detach:
-        cmd.append("-d")
-
-    console.print(t("msg.running_cmd", cmd=" ".join(cmd)))
-    result = subprocess.run(cmd)
-    sys.exit(result.returncode)
+    console.print(t("msg.running_cmd", cmd=result.command))
+    raise typer.Exit(result.returncode)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -582,46 +310,25 @@ def check(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.check.opt_file"))] = COMPOSE_FILE,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help=t("cmd.check.opt_verbose"))] = False,
 ) -> None:
-    if not file.exists():
-        console.print(t("msg.compose_not_found_run", file=file))
+    console.print(t("msg.check_running", file=file))
+    try:
+        result = core_check(file)
+    except RdtError as e:
+        console.print(str(e))
         raise typer.Exit(1)
 
-    cmd = ["docker", "compose", "-f", str(file), "config"]
-    console.print(t("msg.check_running", file=file))
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode == 0:
-        if verbose and result.stdout:
-            console.print(result.stdout.strip())
+    if result.valid:
         console.print(t("msg.check_ok", file=file))
     else:
-        if result.stderr:
-            console.print(result.stderr.strip())
+        if result.error:
+            console.print(result.error)
         console.print(t("msg.check_fail", file=file))
-        raise typer.Exit(result.returncode)
+        raise typer.Exit(1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # rdt remove
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _get_artifact_paths_for_service(service_name: str, project_root: Path) -> list[Path]:
-    """Вернуть список companion-файлов для сервиса, которые существуют на диске.
-
-    Берёт список артефактов из пресета (если он есть) и возвращает
-    только те файлы, что физически присутствуют в project_root.
-    """
-    preset = ALL_PRESETS.get(service_name)
-    if preset is None or not preset.artifacts:
-        return []
-    paths: list[Path] = []
-    for artifact_def in preset.artifacts:
-        candidate = project_root / artifact_def.relative_path
-        if candidate.exists():
-            paths.append(candidate)
-    return paths
-
 
 @app.command(name="remove", help=t("cmd.remove.help"))
 def remove(
@@ -631,14 +338,9 @@ def remove(
     clean_env: Annotated[bool, typer.Option("--clean-env", help=t("cmd.remove.opt_clean_env"))] = False,
     clean_artifacts: Annotated[bool, typer.Option("--clean-artifacts", help=t("cmd.remove.opt_clean_artifacts"))] = False,
 ) -> None:
-    # ── 1. Проверить существование compose-файла ─────────────────────────────
     if not file.exists():
         console.print(t("remove.compose_not_found", file=file))
         raise typer.Exit(1)
-
-    project_root = _resolve_project_root(file)
-    env_file = project_root / ".env"
-    env_example_file = project_root / ".env.example"
 
     data = load_compose(file)
     existing = get_existing_services(data)
@@ -647,9 +349,8 @@ def remove(
         console.print(t("remove.no_services", file=file))
         raise typer.Exit(1)
 
-    # ── 2. Выбор сервиса (интерактивно или аргумент) ─────────────────────────
+    # ── Выбор сервиса (interactive или аргумент) ─────────────────────────────
     if service is None:
-        # Интерактивный выбор
         from rdt.wizard import ask_remove_service_choice
         service = ask_remove_service_choice(existing)
         if not service:
@@ -665,120 +366,48 @@ def remove(
 
     console.print(t("remove.header", service=service))
 
-    # ── 3. Предупреждение о зависимых сервисах ───────────────────────────────
-    dependents = get_dependents(data, service)
-    if dependents:
-        console.print(t("remove.dependents_warn", service=service))
-        for dep in dependents:
-            console.print(t("remove.dependents_entry", dependent=dep))
-        console.print(t("remove.dependents_note"))
-        console.print()
+    # ── Интерактивные вопросы по опциям (если не --yes) ─────────────────────
+    if not yes:
+        from rdt.env_manager import find_orphaned_vars
+        from rdt.core import _get_artifact_paths
+        project_root = _resolve_project_root(file)
 
-    # ── 4. Анализ: orphaned ENV vars ─────────────────────────────────────────
-    orphaned_vars: set[str] = set()
-    if clean_env or not yes:
         orphaned_vars = find_orphaned_vars(data, service)
+        artifact_paths = _get_artifact_paths(service, project_root)
 
-    # ── 5. Анализ: companion файлы ───────────────────────────────────────────
-    artifact_paths: list[Path] = []
-    if clean_artifacts or not yes:
-        artifact_paths = _get_artifact_paths_for_service(service, project_root)
-
-    # ── 6. Интерактивные вопросы (если не --yes) ─────────────────────────────
-    if not yes:
         if orphaned_vars and not clean_env:
-            clean_env = questionary.confirm(
-                t("remove.ask_clean_env"),
-                default=True,
-            ).ask() or False
-
+            clean_env = questionary.confirm(t("remove.ask_clean_env"), default=True).ask() or False
         if artifact_paths and not clean_artifacts:
-            clean_artifacts = questionary.confirm(
-                t("remove.ask_clean_artifacts"),
-                default=False,
-            ).ask() or False
+            clean_artifacts = questionary.confirm(t("remove.ask_clean_artifacts"), default=False).ask() or False
 
-    # ── 7. Показать план ─────────────────────────────────────────────────────
-    console.print(t("remove.plan_header"))
-    console.print(t("remove.plan_service", service=service, file=file))
-
-    # Named volumes (рассчитать предварительно)
-    preview_volumes = _preview_orphaned_volumes(data, service)
-    for vol in preview_volumes:
-        console.print(t("remove.plan_volume", volume=vol))
-
-    if clean_env and orphaned_vars:
-        for var in sorted(orphaned_vars):
-            console.print(t("remove.plan_env_var", var=var, file=env_file))
-    elif not orphaned_vars:
-        console.print(t("remove.plan_env_skip"))
-    else:
-        console.print(t("remove.plan_env_skip"))
-
-    if clean_artifacts and artifact_paths:
-        for p in artifact_paths:
-            console.print(t("remove.plan_artifact", path=str(p)))
-    else:
-        console.print(t("remove.plan_artifact_skip"))
-
-    console.print()
-
-    # ── 8. Финальное подтверждение ───────────────────────────────────────────
-    if not yes:
         confirmed = questionary.confirm(t("remove.confirm"), default=False).ask()
         if not confirmed:
             console.print(t("remove.cancelled"))
             raise typer.Exit(0)
 
-    # ── 9. ПРИМЕНЕНИЕ ────────────────────────────────────────────────────────
+    # ── Применение (делегируем в core) ───────────────────────────────────────
+    try:
+        result = core_remove(service, file, clean_env=clean_env, clean_artifacts=clean_artifacts)
+    except RdtError as e:
+        console.print(str(e))
+        raise typer.Exit(1)
 
-    # Удалить сервис + orphaned named volumes из compose
-    data, removed_volumes = remove_service(data, service)
-    save_compose(file, data)
+    # ── Presentation ──────────────────────────────────────────────────────────
+    project_root = _resolve_project_root(file)
+    env_file = project_root / ".env"
+
     console.print(t("remove.compose_saved", file=file))
-    for vol in removed_volumes:
+    for vol in result.removed_volumes:
         console.print(t("remove.volume_removed", volume=vol))
-
-    # Очистить ENV
-    if clean_env and orphaned_vars:
-        removed_count = remove_vars_from_env_file(env_file, orphaned_vars)
-        remove_vars_from_env_file(env_example_file, orphaned_vars)
-        if removed_count:
-            console.print(t("remove.env_file_cleaned", file=env_file, count=removed_count))
-
-    # Удалить companion-файлы
-    if clean_artifacts and artifact_paths:
-        for p in artifact_paths:
-            try:
-                if p.exists():
-                    if p.is_file():
-                        p.unlink()
-                    else:
-                        import shutil
-                        shutil.rmtree(p)
-                    console.print(t("remove.artifact_removed", path=str(p)))
-                else:
-                    console.print(t("remove.artifact_not_found", path=str(p)))
-            except Exception as exc:
-                console.print(t("remove.artifact_error", path=str(p), error=str(exc)))
-
+    if result.cleaned_env_vars:
+        console.print(t("remove.env_file_cleaned", file=env_file, count=len(result.cleaned_env_vars)))
+    for p in result.cleaned_files:
+        console.print(t("remove.artifact_removed", path=p))
+    if result.dependents_warned:
+        console.print(t("remove.dependents_warn", service=service))
+        for dep in result.dependents_warned:
+            console.print(t("remove.dependents_entry", dependent=dep))
     console.print(t("remove.done", service=service))
-
-
-def _preview_orphaned_volumes(data: Any, service_name: str) -> list[str]:
-    """Список named volumes, которые станут осиротевшими после удаления сервиса."""
-    service_volumes = get_service_named_volumes(data, service_name)
-    still_used: set[str] = set()
-    for svc_name, svc_def in (data.get("services") or {}).items():
-        if svc_name == service_name:
-            continue
-        for vol in (svc_def or {}).get("volumes", []):
-            vol_str = str(vol)
-            if ":" in vol_str:
-                source = vol_str.split(":")[0]
-                if not source.startswith(".") and not source.startswith("/"):
-                    still_used.add(source)
-    return [v for v in service_volumes if v not in still_used]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -812,41 +441,38 @@ _CHECK_LABEL_KEYS = {
 def doctor(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.doctor.opt_file"))] = COMPOSE_FILE,
 ) -> None:
-    from rich.table import Table
-    from rich import box as rich_box
-
-    project_root = _resolve_project_root(file)
     console.print(t("doctor.header"))
 
-    results = run_all_checks(file, project_root)
+    try:
+        result = core_doctor(file)
+    except RdtError as e:
+        console.print(str(e))
+        raise typer.Exit(1)
 
-    table = Table(box=rich_box.ROUNDED, show_header=True, show_lines=False, expand=False)
+    table = Table(box=box.ROUNDED, show_header=True, show_lines=False, expand=False)
     table.add_column("", width=3, no_wrap=True)
-    table.add_column(t("doctor.check_docker").split()[0] if False else "Check", style="bold", no_wrap=True)
+    table.add_column("Check", style="bold", no_wrap=True)
     table.add_column("Result")
 
-    for r in results:
-        icon = _STATUS_ICON.get(r.status, "?")
-        style = _STATUS_STYLE.get(r.status, "")
-        label = t(_CHECK_LABEL_KEYS.get(r.name, r.name))
-        table.add_row(icon, label, f"[{style}]{r.message}[/]")
+    for r in result.checks:
+        icon = _STATUS_ICON.get(r["status"], "?")
+        style = _STATUS_STYLE.get(r["status"], "")
+        label = t(_CHECK_LABEL_KEYS.get(r["name"], r["name"]))
+        table.add_row(icon, label, f"[{style}]{r['message']}[/]")
 
     console.print(table)
 
-    # Подробности (details) — отдельно под таблицей
-    for r in results:
-        if r.details:
+    for r in result.checks:
+        if r.get("details"):
             console.print()
-            label = t(_CHECK_LABEL_KEYS.get(r.name, r.name))
-            icon = _STATUS_ICON.get(r.status, "?")
+            label = t(_CHECK_LABEL_KEYS.get(r["name"], r["name"]))
+            icon = _STATUS_ICON.get(r["status"], "?")
             console.print(f"  {icon} [bold]{label}:[/]")
-            for line in r.details:
+            for line in r["details"]:
                 console.print(line)
 
-    # Итоговая строка
-    errors = sum(1 for r in results if r.status == "error")
-    warns  = sum(1 for r in results if r.status == "warn")
-
+    errors = result.summary.get("error", 0)
+    warns  = result.summary.get("warn", 0)
     console.print()
     if errors == 0 and warns == 0:
         console.print(t("doctor.summary_ok"))
