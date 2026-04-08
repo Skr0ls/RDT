@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rdt-rambo"
-version = "2.0.1"
+version = "2.1.1"
 description = "Rambo Docker Tools — CLI for docker-compose generation"
 readme = "README.md"
 license = "MIT"
@@ -36,6 +36,11 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[project.optional-dependencies]
+mcp = [
+    "mcp[cli]>=1.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/Skr0ls/RDT"
 Repository = "https://github.com/Skr0ls/RDT"
@@ -43,6 +48,7 @@ Repository = "https://github.com/Skr0ls/RDT"
 
 [project.scripts]
 rdt = "rdt.cli:app"
+rdt-mcp = "rdt.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
