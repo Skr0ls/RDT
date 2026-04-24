@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from rdt.strategies.base import NETWORK_NAME
 
@@ -44,6 +44,7 @@ def save_compose(path: Path, data: CommentedMap) -> None:
     import io
     # Гарантировать существование родительской директории (для --file infra/docker-compose.yml)
     path.parent.mkdir(parents=True, exist_ok=True)
+    _normalize_healthcheck_test_flow_style(data)
     y = _make_yaml()
     buf = io.StringIO()
     y.dump(data, buf)
@@ -212,14 +213,40 @@ def get_services_with_healthcheck(data: CommentedMap) -> set[str]:
     return result
 
 
-def _dict_to_commented(d: Any) -> Any:
-    """Рекурсивно конвертировать dict → CommentedMap."""
+def _normalize_healthcheck_test_flow_style(d: Any, path: tuple[str, ...] = ()) -> Any:
+    """Принудительно записывать все healthcheck.test списки в inline (flow) стиле."""
+    if isinstance(d, dict):
+        for k, v in list(d.items()):
+            child_path = path + (str(k),)
+            if len(child_path) >= 2 and child_path[-2:] == ("healthcheck", "test") and isinstance(v, list):
+                seq = v if isinstance(v, CommentedSeq) else CommentedSeq(v)
+                seq.fa.set_flow_style()
+                d[k] = seq
+            else:
+                d[k] = _normalize_healthcheck_test_flow_style(v, child_path)
+        return d
+    if isinstance(d, list):
+        for idx, item in enumerate(d):
+            d[idx] = _normalize_healthcheck_test_flow_style(item, path)
+        return d
+    return d
+
+
+def _dict_to_commented(d: Any, path: tuple[str, ...] = ()) -> Any:
+    """Рекурсивно конвертировать dict → CommentedMap, list → CommentedSeq.
+
+    Списки healthcheck.test сериализуются в inline (flow) стиле,
+    т.к. Docker Compose ожидает test: ["CMD-SHELL", "..."] или ["CMD", "..."].
+    """
     if isinstance(d, dict):
         cm = CommentedMap()
         for k, v in d.items():
-            cm[k] = _dict_to_commented(v)
+            cm[k] = _dict_to_commented(v, path + (k,))
         return cm
     if isinstance(d, list):
-        return [_dict_to_commented(i) for i in d]
+        seq = CommentedSeq([_dict_to_commented(i, path) for i in d])
+        if len(path) >= 2 and path[-2:] == ("healthcheck", "test"):
+            seq.fa.set_flow_style()
+        return seq
     return d
 

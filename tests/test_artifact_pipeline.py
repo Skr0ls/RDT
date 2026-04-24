@@ -1675,3 +1675,111 @@ def test_traefik_scaffold_creates_dirs(tmp_path: Path) -> None:
     assert all(r.status == "created" for r in results)
     assert (tmp_path / "traefik").is_dir()
     assert (tmp_path / "traefik" / "dynamic").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# YAML manager — healthcheck inline flow style
+# ---------------------------------------------------------------------------
+
+def test_dict_to_commented_healthcheck_test_flow_style() -> None:
+    """healthcheck.test сериализуется в inline (flow) стиле."""
+    from rdt.yaml_manager import _dict_to_commented
+    from ruamel.yaml.comments import CommentedSeq
+
+    d = {
+        "healthcheck": {
+            "test": ["CMD-SHELL", "pg_isready || exit 1"],
+            "interval": "10s",
+        },
+        "ports": ["5432:5432"],
+    }
+    cm = _dict_to_commented(d)
+
+    test_seq = cm["healthcheck"]["test"]
+    assert isinstance(test_seq, CommentedSeq)
+    assert test_seq.fa.flow_style() is True
+
+    ports_seq = cm["ports"]
+    assert isinstance(ports_seq, CommentedSeq)
+    assert ports_seq.fa.flow_style() is not True
+
+
+def test_save_compose_healthcheck_test_inline(tmp_path: Path) -> None:
+    """save_compose записывает healthcheck.test как inline-массив."""
+    from rdt.yaml_manager import save_compose, make_base_compose, inject_service
+
+    data = make_base_compose()
+    service_def = {
+        "image": "postgres:16",
+        "healthcheck": {
+            "test": ["CMD-SHELL", "pg_isready -U postgres || exit 1"],
+            "interval": "10s",
+            "timeout": "5s",
+            "retries": 3,
+        },
+        "ports": ["5432:5432"],
+        "volumes": ["pg_data:/var/lib/postgresql/data"],
+        "networks": ["rambo-net"],
+    }
+    inject_service(data, "db", service_def)
+
+    compose_file = tmp_path / "docker-compose.yml"
+    save_compose(compose_file, data)
+    content = compose_file.read_text(encoding="utf-8")
+
+    assert "test: [CMD-SHELL, pg_isready -U postgres || exit 1]" in content
+    assert "ports:\n    - " in content  # block-style под services.db
+    assert "volumes:\n    - pg_data:/var/lib/postgresql/data" in content
+    assert "networks:\n    - rambo-net" in content
+
+
+def test_save_compose_normalizes_existing_healthcheck_test(tmp_path: Path) -> None:
+    """save_compose нормализует уже загруженные block-style healthcheck.test."""
+    from rdt.yaml_manager import save_compose, load_compose
+
+    compose_file = tmp_path / "docker-compose.yml"
+    compose_file.write_text(
+        """
+services:
+  db:
+    image: postgres:16
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U postgres || exit 1
+      interval: 10s
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    data = load_compose(compose_file)
+    save_compose(compose_file, data)
+    content = compose_file.read_text(encoding="utf-8")
+
+    assert "test: [CMD-SHELL, pg_isready -U postgres || exit 1]" in content
+    assert "test:\n" not in content
+
+
+def test_save_compose_traefik_healthcheck_inline(tmp_path: Path) -> None:
+    """TraefikStrategy + save_compose даёт inline healthcheck.test."""
+    from rdt.strategies.traefik import TraefikStrategy
+    from rdt.presets.catalog import TRAEFIK
+    from rdt.yaml_manager import save_compose, make_base_compose, inject_service
+
+    strategy = TraefikStrategy(
+        TRAEFIK,
+        {
+            "port": 80,
+            "network_name": "rambo-net",
+            "traefik_config_dir": "./traefik",
+        },
+    )
+    svc = strategy.build()
+    data = make_base_compose()
+    inject_service(data, "traefik", svc)
+
+    compose_file = tmp_path / "docker-compose.yml"
+    save_compose(compose_file, data)
+    content = compose_file.read_text(encoding="utf-8")
+
+    assert "test: [CMD-SHELL, wget -qO- http://localhost:8080/ping || exit 1]" in content
