@@ -1,9 +1,9 @@
 """
-RDT Core — бизнес-логика без CLI-зависимостей (Rich / Typer / questionary).
+RDT Core — business logic without CLI dependencies (Rich / Typer / questionary).
 
-Используется MCP-сервером и может использоваться любым другим клиентом.
-Все функции принимают типизированные параметры и возвращают dataclass-результаты.
-При ошибках бросают RdtError.
+Used by the MCP server and available to any other client.
+All functions accept typed parameters and return dataclass results.
+Errors are raised as RdtError.
 """
 from __future__ import annotations
 
@@ -32,15 +32,15 @@ from rdt.artifacts import (
 from rdt.doctor import run_all_checks
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Исключение
+# Exception
 # ─────────────────────────────────────────────────────────────────────────────
 
 class RdtError(Exception):
-    """Ошибка бизнес-логики RDT."""
+    """RDT business-logic error."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Результирующие типы
+# Result types
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -97,11 +97,11 @@ class UpResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Вспомогательные функции
+# Helper functions
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _resolve_root(file: Path) -> Path:
-    """Определить project root по аналогии с CLI."""
+    """Resolve the project root in the same way as the CLI."""
     return file.parent.resolve()
 
 
@@ -121,7 +121,7 @@ def _get_artifact_paths(service_name: str, project_root: Path) -> list[Path]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def init(file: Path, force: bool = False) -> InitResult:
-    """Создать базовый docker-compose.yml, .env и .env.example."""
+    """Create base docker-compose.yml, .env, and .env.example files."""
     if file.exists() and not force:
         raise RdtError(f"File already exists: {file}. Use force=True to overwrite.")
 
@@ -164,7 +164,7 @@ def add(
     hc_start_period: str | None = None,
     set_vars: dict[str, str] | None = None,
 ) -> AddResult:
-    """Добавить сервис в docker-compose.yml (script/MCP mode)."""
+    """Add a service to docker-compose.yml in script/MCP mode."""
     service = service.lower()
     preset = ALL_PRESETS.get(service)
     if preset is None:
@@ -212,7 +212,7 @@ def add_from_answers(
     file: Path,
     hardcore: bool = False,
 ) -> AddResult:
-    """Добавить сервис, используя готовый словарь answers (wizard mode в CLI)."""
+    """Add a service using a prepared answers dict from CLI wizard mode."""
     service = service.lower()
     preset = ALL_PRESETS.get(service)
     if preset is None:
@@ -235,13 +235,13 @@ def _apply_add(
     file: Path,
     hardcore: bool,
 ) -> AddResult:
-    """Применить answers к compose/env/artifacts — общий apply-путь."""
+    """Apply answers to compose/env/artifacts through the shared apply path."""
     svc_key = preset.name
     project_root = _resolve_root(file)
     env_file = project_root / ".env"
     env_example = project_root / ".env.example"
 
-    # Compose в памяти
+    # Compose data in memory.
     if file.exists():
         data = load_compose(file)
         compose_was_new = False
@@ -299,14 +299,14 @@ def _apply_add(
             )
         artifact_plans = pipeline.plan()
 
-    # Снимки для rollback
+    # Snapshots for rollback.
     compose_snapshot: str | None = file.read_text(encoding="utf-8") if file.exists() else None
     env_existed = env_file.exists()
     env_snapshot: str | None = env_file.read_text(encoding="utf-8") if env_existed else None
     env_ex_existed = env_example.exists()
     env_ex_snapshot: str | None = env_example.read_text(encoding="utf-8") if env_ex_existed else None
 
-    # ── Запись на диск ────────────────────────────────────────────────────────
+    # ── Write to disk ─────────────────────────────────────────────────────────
     save_compose(file, data)
     write_env(env_file, env_values)
     write_env_example(env_example, env_values)
@@ -346,7 +346,7 @@ def _apply_add(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# _rollback (внутренний)
+# _rollback (internal)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _rollback(
@@ -362,7 +362,7 @@ def _rollback(
     scaffold_results: list[ScaffoldResult],
     artifact_results: list[ArtifactResult],
 ) -> None:
-    """Best-effort rollback при ошибке применения."""
+    """Best-effort rollback after an apply error."""
     try:
         if compose_was_new:
             if compose_file.exists():
@@ -413,7 +413,7 @@ def remove(
     clean_env: bool = False,
     clean_artifacts: bool = False,
 ) -> RemoveResult:
-    """Удалить сервис из docker-compose.yml."""
+    """Remove a service from docker-compose.yml."""
     if not file.exists():
         raise RdtError(f"Compose file not found: {file}")
 
@@ -472,7 +472,7 @@ def remove(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def list_presets(category: str | None = None) -> list[PresetInfo]:
-    """Вернуть список доступных пресетов."""
+    """Return the list of available presets."""
     result = []
     for preset in ALL_PRESETS.values():
         if category and preset.category.lower() != category.lower():
@@ -494,7 +494,7 @@ def list_presets(category: str | None = None) -> list[PresetInfo]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def doctor(file: Path) -> DoctorResult:
-    """Запустить полную диагностику проекта."""
+    """Run full project diagnostics."""
     project_root = _resolve_root(file)
     results = run_all_checks(file, project_root)
 
@@ -521,7 +521,7 @@ def doctor(file: Path) -> DoctorResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check(file: Path) -> ComposeCheckResult:
-    """Проверить валидность docker-compose.yml через docker compose config."""
+    """Validate docker-compose.yml through docker compose config."""
     if not file.exists():
         raise RdtError(f"Compose file not found: {file}")
 
@@ -539,7 +539,7 @@ def check(file: Path) -> ComposeCheckResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def up(file: Path, detach: bool = True) -> UpResult:
-    """Запустить docker compose up."""
+    """Run docker compose up."""
     if not file.exists():
         raise RdtError(f"Compose file not found: {file}")
 

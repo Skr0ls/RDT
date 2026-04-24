@@ -1,6 +1,6 @@
 """
-Чтение и запись docker-compose.yml через ruamel.yaml
-(сохраняет комментарии, порядок ключей, форматирование).
+Read and write docker-compose.yml through ruamel.yaml.
+Preserves comments, key order, and formatting.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -10,6 +10,14 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from rdt.strategies.base import NETWORK_NAME
+
+DEFAULT_COMPOSE_FILE = "docker-compose.yml"
+COMMON_COMPOSE_FILENAMES = (
+    "compose.yml",
+    "compose.yaml",
+    "docker-compose.yaml",
+    DEFAULT_COMPOSE_FILE,
+)
 
 _yaml = YAML()
 _yaml.default_flow_style = False
@@ -26,8 +34,25 @@ def _make_yaml() -> YAML:
     return y
 
 
+def find_existing_compose_file(project_dir: Path | None = None) -> Path | None:
+    """Return the first existing Compose file matching common naming conventions."""
+    base = project_dir or Path.cwd()
+    for filename in COMMON_COMPOSE_FILENAMES:
+        candidate = base / filename
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def resolve_default_compose_file(file: Path) -> Path:
+    """Resolve the default compose path to an existing common Compose filename."""
+    if file.exists() or file.name != DEFAULT_COMPOSE_FILE:
+        return file
+    return find_existing_compose_file(file.parent) or file
+
+
 def load_compose(path: Path) -> CommentedMap:
-    """Загрузить docker-compose.yml; вернуть пустую структуру если файла нет."""
+    """Load docker-compose.yml; return an empty structure when the file is missing."""
     y = _make_yaml()
     if path.exists():
         with path.open("r", encoding="utf-8") as f:
@@ -39,23 +64,23 @@ def load_compose(path: Path) -> CommentedMap:
 
 
 def save_compose(path: Path, data: CommentedMap) -> None:
-    """Сохранить docker-compose.yml. Создаёт родительскую директорию при необходимости."""
+    """Save docker-compose.yml and create the parent directory when needed."""
     import re
     import io
-    # Гарантировать существование родительской директории (для --file infra/docker-compose.yml)
+    # Ensure the parent directory exists for --file infra/docker-compose.yml.
     path.parent.mkdir(parents=True, exist_ok=True)
     _normalize_healthcheck_test_flow_style(data)
     y = _make_yaml()
     buf = io.StringIO()
     y.dump(data, buf)
-    # Нормализуем накопившиеся пустые строки: ≥3 переноса → ровно 2 (= 1 пустая строка)
+    # Normalize accumulated blank lines: ≥3 newlines → exactly 2 (= one blank line).
     content = re.sub(r'\n{3,}', '\n\n', buf.getvalue())
     with path.open("w", encoding="utf-8") as f:
         f.write(content)
 
 
 def make_base_compose(network_config: dict | None = None) -> CommentedMap:
-    """Создать базовую структуру docker-compose.yml.
+    """Create the base docker-compose.yml structure.
 
     network_config: {"type": "bridge"|"external"|"host"|"none", "name": str}
     """
@@ -82,7 +107,7 @@ def inject_service(
     service_def: dict[str, Any],
     network_config: dict | None = None,
 ) -> CommentedMap:
-    """Вставить новый сервис в секцию services без нарушения структуры.
+    """Insert a new service into the services section without breaking structure.
 
     network_config: {"type": "bridge"|"external"|"host"|"none", "name": str}
     """
@@ -94,7 +119,7 @@ def inject_service(
     net_type = (network_config or {}).get("type", "bridge")
     net_name = (network_config or {}).get("name", NETWORK_NAME)
 
-    # Управление секцией networks в зависимости от типа
+    # Manage the networks section depending on the network type.
     if net_type in ("bridge", "external"):
         if "networks" not in data:
             data["networks"] = CommentedMap()
@@ -103,46 +128,46 @@ def inject_service(
                 data["networks"][net_name] = CommentedMap({"driver": "bridge"})
             else:
                 data["networks"][net_name] = CommentedMap({"external": True})
-    # host / none — секция networks для этой сети не нужна
+    # host / none do not need a networks section for this network.
 
-    # Конвертируем в CommentedMap для сохранения порядка
+    # Convert to CommentedMap to preserve order.
     svc_map = _dict_to_commented(service_def)
     data["services"][service_name] = svc_map
 
-    # Пустая строка перед каждым сервисом кроме первого
+    # Add a blank line before each service except the first.
     if len(data["services"]) > 1:
         data["services"].yaml_set_comment_before_after_key(service_name, before="\n")
 
-    # Регистрируем named volumes
+    # Register named volumes.
     for vol in service_def.get("volumes", []):
         vol_str = str(vol)
         if ":" in vol_str:
             source = vol_str.split(":")[0]
-            # Именованный volume — не начинается с . или /
+            # Named volumes do not start with . or /.
             if not source.startswith(".") and not source.startswith("/"):
                 if source not in data["volumes"]:
                     data["volumes"][source] = None  # type: ignore[assignment]
 
-    # Пустая строка перед networks и volumes (верхний уровень)
+    # Blank line before top-level networks and volumes.
     _ensure_section_spacing(data)
 
     return data
 
 
 def _ensure_section_spacing(data: CommentedMap) -> None:
-    """Гарантировать пустую строку перед networks и volumes на верхнем уровне."""
+    """Ensure a blank line before top-level networks and volumes."""
     for key in ("networks", "volumes"):
         if key in data:
             data.yaml_set_comment_before_after_key(key, before="\n")
 
 
 def get_existing_services(data: CommentedMap) -> list[str]:
-    """Вернуть список имён сервисов из docker-compose."""
+    """Return service names from docker-compose."""
     return list(data.get("services", {}).keys())
 
 
 def get_dependents(data: CommentedMap, service_name: str) -> list[str]:
-    """Вернуть список сервисов, которые зависят от service_name через depends_on."""
+    """Return services that depend on service_name through depends_on."""
     result: list[str] = []
     for svc_name, svc_def in (data.get("services") or {}).items():
         if svc_name == service_name:
@@ -156,7 +181,7 @@ def get_dependents(data: CommentedMap, service_name: str) -> list[str]:
 
 
 def get_service_named_volumes(data: CommentedMap, service_name: str) -> set[str]:
-    """Вернуть именованные volumes (не bind-mount), используемые указанным сервисом."""
+    """Return named volumes, not bind mounts, used by the specified service."""
     result: set[str] = set()
     svc_def = (data.get("services") or {}).get(service_name) or {}
     for vol in svc_def.get("volumes", []):
@@ -169,21 +194,21 @@ def get_service_named_volumes(data: CommentedMap, service_name: str) -> set[str]
 
 
 def remove_service(data: CommentedMap, service_name: str) -> tuple[CommentedMap, list[str]]:
-    """Удалить сервис из compose-данных.
+    """Remove a service from compose data.
 
-    Возвращает (обновлённые данные, список удалённых named volumes).
-    Named volume удаляется только если больше не используется другими сервисами.
+    Returns updated data and a list of removed named volumes.
+    A named volume is removed only when no other service uses it.
     """
     if "services" not in data or service_name not in data["services"]:
         return data, []
 
-    # Запомнить именованные volumes удаляемого сервиса
+    # Remember named volumes used by the removed service.
     service_volumes = get_service_named_volumes(data, service_name)
 
-    # Удалить сервис
+    # Remove the service.
     del data["services"][service_name]
 
-    # Найти volumes, всё ещё используемые оставшимися сервисами
+    # Find volumes that are still used by remaining services.
     still_used: set[str] = set()
     for _, svc_def in (data.get("services") or {}).items():
         for vol in (svc_def or {}).get("volumes", []):
@@ -193,7 +218,7 @@ def remove_service(data: CommentedMap, service_name: str) -> tuple[CommentedMap,
                 if not source.startswith(".") and not source.startswith("/"):
                     still_used.add(source)
 
-    # Удалить осиротевшие named volumes из секции volumes
+    # Remove orphaned named volumes from the volumes section.
     removed_volumes: list[str] = []
     for vol_name in service_volumes:
         if vol_name not in still_used:
@@ -205,7 +230,7 @@ def remove_service(data: CommentedMap, service_name: str) -> tuple[CommentedMap,
 
 
 def get_services_with_healthcheck(data: CommentedMap) -> set[str]:
-    """Вернуть множество имён сервисов, у которых задан healthcheck."""
+    """Return service names that define a healthcheck."""
     result: set[str] = set()
     for svc_name, svc_def in (data.get("services") or {}).items():
         if svc_def and "healthcheck" in svc_def:
@@ -214,7 +239,7 @@ def get_services_with_healthcheck(data: CommentedMap) -> set[str]:
 
 
 def _normalize_healthcheck_test_flow_style(d: Any, path: tuple[str, ...] = ()) -> Any:
-    """Принудительно записывать все healthcheck.test списки в inline (flow) стиле."""
+    """Force all healthcheck.test lists to use inline flow style."""
     if isinstance(d, dict):
         for k, v in list(d.items()):
             child_path = path + (str(k),)
@@ -233,10 +258,10 @@ def _normalize_healthcheck_test_flow_style(d: Any, path: tuple[str, ...] = ()) -
 
 
 def _dict_to_commented(d: Any, path: tuple[str, ...] = ()) -> Any:
-    """Рекурсивно конвертировать dict → CommentedMap, list → CommentedSeq.
+    """Recursively convert dict → CommentedMap and list → CommentedSeq.
 
-    Списки healthcheck.test сериализуются в inline (flow) стиле,
-    т.к. Docker Compose ожидает test: ["CMD-SHELL", "..."] или ["CMD", "..."].
+    healthcheck.test lists are serialized in inline flow style because
+    Docker Compose expects test: ["CMD-SHELL", "..."] or ["CMD", "..."].
     """
     if isinstance(d, dict):
         cm = CommentedMap()

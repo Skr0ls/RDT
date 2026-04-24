@@ -1,5 +1,5 @@
 """
-DatabaseStrategy — обязательные volumes, healthcheck, credentials.
+DatabaseStrategy — required volumes, healthcheck, and credentials.
 """
 from __future__ import annotations
 from typing import Any
@@ -8,7 +8,7 @@ from rdt.strategies.base import BaseStrategy
 
 
 class DatabaseStrategy(BaseStrategy):
-    """Стратегия для баз данных: volumes + healthcheck обязательны."""
+    """Strategy for databases: volumes + healthcheck are required."""
 
     def _enrich(self, service: dict[str, Any]) -> None:
         # --- Volumes ---

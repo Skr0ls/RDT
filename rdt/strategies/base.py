@@ -1,5 +1,5 @@
 """
-BaseStrategy — общая логика генерации docker-compose блока.
+BaseStrategy — shared docker-compose service block generation logic.
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
@@ -13,7 +13,7 @@ DEFAULT_RESTART = "unless-stopped"
 
 
 class BaseStrategy(ABC):
-    """Базовая стратегия: имена, сеть, рестарт-политика."""
+    """Base strategy: names, network, and restart policy."""
 
     def __init__(self, preset: ServicePreset, answers: dict[str, Any]) -> None:
         self.preset = preset
@@ -27,7 +27,7 @@ class BaseStrategy(ABC):
         return f"{CONTAINER_PREFIX}{self.preset.name}"
 
     def build(self) -> dict[str, Any]:
-        """Собрать итоговый словарь сервиса для docker-compose."""
+        """Build the final service dictionary for docker-compose."""
         service: dict[str, Any] = {}
         service["image"] = self.preset.image
         service["container_name"] = self.container_name
@@ -37,23 +37,23 @@ class BaseStrategy(ABC):
         net_type = self.answers.get("network_type", "bridge")
         expose_ports = self.answers.get("expose_ports", True)
 
-        # host network_mode — порты не прокидываются явно
+        # host network_mode does not publish ports explicitly.
         if net_type == "host":
             service["network_mode"] = "host"
         else:
-            # Порты
+            # Ports.
             if expose_ports:
                 service["ports"] = [f"{host_port}:{self.preset.container_port}"]
             else:
                 service["expose"] = [str(self.preset.container_port)]
 
-        # Переменные окружения
+        # Environment variables.
         env = dict(self.preset.default_env)
         env.update(self.answers.get("extra_env", {}))
         if env:
             service["environment"] = env
 
-        # Сеть (не нужна для host и none)
+        # Network (not needed for host or none).
         if net_type not in ("host", "none"):
             net_name = self.answers.get("network_name", NETWORK_NAME)
             service["networks"] = [net_name]
@@ -68,7 +68,7 @@ class BaseStrategy(ABC):
                 for dep in deps
             }
 
-        # Лимиты ресурсов
+        # Resource limits.
         if self.preset.deploy_limits:
             service["deploy"] = {
                 "resources": {
@@ -84,5 +84,5 @@ class BaseStrategy(ABC):
 
     @abstractmethod
     def _enrich(self, service: dict[str, Any]) -> None:
-        """Дополнительная логика в подклассах."""
+        """Additional logic implemented by subclasses."""
 

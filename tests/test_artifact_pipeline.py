@@ -1,21 +1,21 @@
 """
-Smoke / functional tests для ArtifactPipeline (core-hardening M1–M3).
+Smoke / functional tests for ArtifactPipeline (core-hardening M1-M3).
 
-Покрывают:
-- успешную генерацию nginx-proxy, nginx-static, nginx-spa (TEMPLATE)
-- ArtifactSourceType.STATIC и ArtifactSourceType.PYTHON
+Covers:
+- successful generation for nginx-proxy, nginx-static, nginx-spa (TEMPLATE)
+- ArtifactSourceType.STATIC and ArtifactSourceType.PYTHON
 - ArtifactContext.as_template_vars()
-- политику SKIP (существующий файл не перезаписывается)
-- политику OVERWRITE (существующий файл перезаписывается)
-- политику ERROR_IF_EXISTS (ошибка если файл уже существует)
-- preflight: обнаружение отсутствующего шаблона
-- preflight: обнаружение конфликта ERROR_IF_EXISTS
-- preflight: обнаружение STATIC без static_content
-- preflight: обнаружение PYTHON без renderer
-- preflight: успешный проход без проблем
+- SKIP policy (existing file is not overwritten)
+- OVERWRITE policy (existing file is overwritten)
+- ERROR_IF_EXISTS policy (error when the file already exists)
+- preflight: missing template detection
+- preflight: ERROR_IF_EXISTS conflict detection
+- preflight: STATIC without static_content detection
+- preflight: PYTHON without renderer detection
+- preflight: successful pass without issues
 - has_errors() helper
-- корректную работу с нестандартным project_root (аналог --file)
-- падение при ошибке шаблона (несуществующий шаблон)
+- correct behavior with non-standard project_root (similar to --file)
+- failure on template error (missing template)
 - plan→apply split
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ from rdt.artifacts import (
 
 
 # ---------------------------------------------------------------------------
-# Хелперы
+# Helpers
 # ---------------------------------------------------------------------------
 
 NGINX_ANSWERS = {
@@ -73,11 +73,11 @@ def _make_pipeline(
 
 
 # ---------------------------------------------------------------------------
-# Успешная генерация
+# Successful generation
 # ---------------------------------------------------------------------------
 
 def test_nginx_proxy_created(tmp_path: Path) -> None:
-    """Pipeline создаёт nginx/nginx.conf для nginx-proxy."""
+    """Pipeline creates nginx/nginx.conf for nginx-proxy."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/nginx-proxy.conf.j2",
@@ -95,7 +95,7 @@ def test_nginx_proxy_created(tmp_path: Path) -> None:
 
 
 def test_nginx_static_created(tmp_path: Path) -> None:
-    """Pipeline создаёт nginx/nginx.conf для nginx-static."""
+    """Pipeline creates nginx/nginx.conf for nginx-static."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/nginx-static.conf.j2",
@@ -106,7 +106,7 @@ def test_nginx_static_created(tmp_path: Path) -> None:
 
 
 def test_nginx_spa_created(tmp_path: Path) -> None:
-    """Pipeline создаёт nginx/nginx.conf для nginx-spa."""
+    """Pipeline creates nginx/nginx.conf for nginx-spa."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/nginx-spa.conf.j2",
@@ -117,11 +117,11 @@ def test_nginx_spa_created(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Политики перезаписи
+# Overwrite policies
 # ---------------------------------------------------------------------------
 
 def test_skip_existing_file(tmp_path: Path) -> None:
-    """SKIP: существующий файл не перезаписывается."""
+    """SKIP: an existing file is not overwritten."""
     target = tmp_path / "nginx" / "nginx.conf"
     target.parent.mkdir(parents=True)
     target.write_text("ORIGINAL", encoding="utf-8")
@@ -138,7 +138,7 @@ def test_skip_existing_file(tmp_path: Path) -> None:
 
 
 def test_overwrite_existing_file(tmp_path: Path) -> None:
-    """OVERWRITE: существующий файл перезаписывается."""
+    """OVERWRITE: an existing file is overwritten."""
     target = tmp_path / "nginx" / "nginx.conf"
     target.parent.mkdir(parents=True)
     target.write_text("ORIGINAL", encoding="utf-8")
@@ -155,7 +155,7 @@ def test_overwrite_existing_file(tmp_path: Path) -> None:
 
 
 def test_error_if_exists_policy(tmp_path: Path) -> None:
-    """ERROR_IF_EXISTS: возвращает ошибку если файл уже существует."""
+    """ERROR_IF_EXISTS: returns an error when the file already exists."""
     target = tmp_path / "nginx" / "nginx.conf"
     target.parent.mkdir(parents=True)
     target.write_text("ORIGINAL", encoding="utf-8")
@@ -169,7 +169,7 @@ def test_error_if_exists_policy(tmp_path: Path) -> None:
 
     assert results[0].status == "error"
     assert results[0].error is not None
-    # Файл не должен быть изменён
+    # The file must not be changed.
     assert target.read_text() == "ORIGINAL"
 
 
@@ -180,7 +180,7 @@ def test_error_if_exists_policy(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_preflight_ok(tmp_path: Path) -> None:
-    """Preflight не возвращает проблем для валидного артефакта."""
+    """Preflight returns no issues for a valid artifact."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/nginx-proxy.conf.j2",
@@ -191,7 +191,7 @@ def test_preflight_ok(tmp_path: Path) -> None:
 
 
 def test_preflight_catches_missing_template(tmp_path: Path) -> None:
-    """Preflight обнаруживает отсутствующий шаблон."""
+    """Preflight detects a missing template."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/DOES_NOT_EXIST.conf.j2",
@@ -203,7 +203,7 @@ def test_preflight_catches_missing_template(tmp_path: Path) -> None:
 
 
 def test_preflight_catches_error_if_exists(tmp_path: Path) -> None:
-    """Preflight обнаруживает ERROR_IF_EXISTS конфликт до записи."""
+    """Preflight detects an ERROR_IF_EXISTS conflict before writing."""
     target = tmp_path / "nginx" / "nginx.conf"
     target.parent.mkdir(parents=True)
     target.write_text("EXISTS", encoding="utf-8")
@@ -219,23 +219,23 @@ def test_preflight_catches_error_if_exists(tmp_path: Path) -> None:
 
 
 def test_preflight_skips_inactive_conditions(tmp_path: Path) -> None:
-    """Preflight пропускает артефакты с невыполненным условием."""
+    """Preflight skips artifacts whose condition is not met."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/DOES_NOT_EXIST.conf.j2",
-        condition="generate_nginx",  # ключ отсутствует в answers
+        condition="generate_nginx",  # key is missing from answers
     )
     pipeline = _make_pipeline([artifact], tmp_path)
     issues = pipeline.preflight()
-    assert issues == []  # условие не выполнено → артефакт неактивен, проблем нет
+    assert issues == []  # condition is not met → artifact is inactive, no issues
 
 
 # ---------------------------------------------------------------------------
-# Падение при ошибке шаблона
+# Failure on template error
 # ---------------------------------------------------------------------------
 
 def test_missing_template_returns_error(tmp_path: Path) -> None:
-    """Несуществующий шаблон → статус 'error', не исключение."""
+    """Missing template → status 'error', not an exception."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/DOES_NOT_EXIST.conf.j2",
@@ -250,7 +250,7 @@ def test_missing_template_returns_error(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_has_errors_true() -> None:
-    """has_errors возвращает True если есть хотя бы одна ошибка."""
+    """has_errors returns True when there is at least one error."""
     results = [
         ArtifactResult(path=Path("a"), status="created"),
         ArtifactResult(path=Path("b"), status="error", error="oops"),
@@ -259,7 +259,7 @@ def test_has_errors_true() -> None:
 
 
 def test_has_errors_false() -> None:
-    """has_errors возвращает False если нет ошибок."""
+    """has_errors returns False when there are no errors."""
     results = [
         ArtifactResult(path=Path("a"), status="created"),
         ArtifactResult(path=Path("b"), status="skipped"),
@@ -268,11 +268,11 @@ def test_has_errors_false() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Работа с нестандартным base_dir (аналог --file)
+# Behavior with non-standard base_dir (similar to --file)
 # ---------------------------------------------------------------------------
 
 def test_custom_base_dir(tmp_path: Path) -> None:
-    """Артефакты генерируются относительно переданного base_dir."""
+    """Artifacts are generated relative to the provided base_dir."""
     custom_root = tmp_path / "infra"
     custom_root.mkdir()
 
@@ -285,27 +285,73 @@ def test_custom_base_dir(tmp_path: Path) -> None:
     assert results[0].status == "created"
     expected = custom_root / "nginx" / "nginx.conf"
     assert expected.exists()
-    # Файл не должен появиться в tmp_path напрямую
+    # The file must not appear directly under tmp_path.
     assert not (tmp_path / "nginx" / "nginx.conf").exists()
 
 
 # ---------------------------------------------------------------------------
-# Тест _resolve_project_root из cli
+# Test _resolve_project_root from cli
 # ---------------------------------------------------------------------------
 
 def test_resolve_project_root_default() -> None:
-    """Для docker-compose.yml в cwd root == cwd."""
+    """For docker-compose.yml in cwd, root == cwd."""
     from rdt.cli import _resolve_project_root
     result = _resolve_project_root(Path("docker-compose.yml"))
     assert result == Path.cwd().resolve()
 
 
 def test_resolve_project_root_subdir(tmp_path: Path) -> None:
-    """Для файла в поддиректории root == поддиректория."""
+    """For a file in a subdirectory, root == that subdirectory."""
     from rdt.cli import _resolve_project_root
     compose = tmp_path / "infra" / "docker-compose.yml"
     result = _resolve_project_root(compose)
     assert result == (tmp_path / "infra").resolve()
+
+
+def test_find_existing_compose_file_prefers_common_order(tmp_path: Path) -> None:
+    """Existing Compose files are detected using common filename conventions."""
+    from rdt.yaml_manager import find_existing_compose_file
+
+    (tmp_path / "docker-compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    (tmp_path / "compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+    assert find_existing_compose_file(tmp_path) == tmp_path / "compose.yml"
+
+
+def test_resolve_default_compose_file_uses_existing_compose_yaml(tmp_path: Path) -> None:
+    """The default docker-compose.yml path resolves to an existing compose.yaml."""
+    from rdt.yaml_manager import resolve_default_compose_file
+
+    existing = tmp_path / "compose.yaml"
+    existing.write_text("services: {}\n", encoding="utf-8")
+
+    assert resolve_default_compose_file(tmp_path / "docker-compose.yml") == existing
+
+
+def test_resolve_default_compose_file_keeps_custom_path(tmp_path: Path) -> None:
+    """Custom compose paths are not replaced by common filename discovery."""
+    from rdt.yaml_manager import resolve_default_compose_file
+
+    (tmp_path / "compose.yml").write_text("services: {}\n", encoding="utf-8")
+    custom = tmp_path / "custom-compose.yml"
+
+    assert resolve_default_compose_file(custom) == custom
+
+
+def test_cli_add_uses_existing_compose_yml_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """rdt add --yes updates compose.yml instead of creating docker-compose.yml."""
+    from typer.testing import CliRunner
+    from rdt.cli import app
+
+    monkeypatch.chdir(tmp_path)
+    compose = tmp_path / "compose.yml"
+    compose.write_text("services: {}\n", encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["add", "redis", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert "redis:" in compose.read_text(encoding="utf-8")
+    assert not (tmp_path / "docker-compose.yml").exists()
 
 
 
@@ -314,7 +360,7 @@ def test_resolve_project_root_subdir(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_artifact_context_as_template_vars(tmp_path: Path) -> None:
-    """as_template_vars() включает answers + служебные поля."""
+    """as_template_vars() includes answers plus service fields."""
     ctx = ArtifactContext(
         service_name="my-svc",
         answers={"foo": "bar"},
@@ -331,7 +377,7 @@ def test_artifact_context_as_template_vars(tmp_path: Path) -> None:
 
 
 def test_artifact_context_with_preset(tmp_path: Path) -> None:
-    """as_template_vars() включает preset_name и preset_display_name если preset задан."""
+    """as_template_vars() includes preset_name and preset_display_name when preset is set."""
     class _FakePreset:
         name = "nginx-proxy"
         display_name = "Nginx Proxy"
@@ -354,7 +400,7 @@ def test_artifact_context_with_preset(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_static_source_creates_file(tmp_path: Path) -> None:
-    """STATIC: записывает static_content в целевой файл."""
+    """STATIC: writes static_content to the target file."""
     artifact = ArtifactDef(
         relative_path="config/app.conf",
         source_type=ArtifactSourceType.STATIC,
@@ -367,7 +413,7 @@ def test_static_source_creates_file(tmp_path: Path) -> None:
 
 
 def test_preflight_catches_static_without_content(tmp_path: Path) -> None:
-    """Preflight обнаруживает STATIC без static_content."""
+    """Preflight detects STATIC without static_content."""
     artifact = ArtifactDef(
         relative_path="config/app.conf",
         source_type=ArtifactSourceType.STATIC,
@@ -383,7 +429,7 @@ def test_preflight_catches_static_without_content(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_python_source_creates_file(tmp_path: Path) -> None:
-    """PYTHON: вызывает renderer(context) и записывает результат."""
+    """PYTHON: calls renderer(context) and writes the result."""
     def my_renderer(ctx: ArtifactContext) -> str:
         return f"# Generated for {ctx.service_name}\nupstream={ctx.answers.get('nginx_upstream')}\n"
 
@@ -400,7 +446,7 @@ def test_python_source_creates_file(tmp_path: Path) -> None:
 
 
 def test_preflight_catches_python_without_renderer(tmp_path: Path) -> None:
-    """Preflight обнаруживает PYTHON без renderer."""
+    """Preflight detects PYTHON without renderer."""
     artifact = ArtifactDef(
         relative_path="config/dynamic.conf",
         source_type=ArtifactSourceType.PYTHON,
@@ -416,7 +462,7 @@ def test_preflight_catches_python_without_renderer(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_plan_returns_create_for_new_file(tmp_path: Path) -> None:
-    """plan() возвращает action='create' для нового файла."""
+    """plan() returns action='create' for a new file."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/nginx-proxy.conf.j2",
@@ -428,7 +474,7 @@ def test_plan_returns_create_for_new_file(tmp_path: Path) -> None:
 
 
 def test_plan_returns_skip_for_existing_file(tmp_path: Path) -> None:
-    """plan() возвращает action='skip' для существующего файла с политикой SKIP."""
+    """plan() returns action='skip' for an existing file with SKIP policy."""
     target = tmp_path / "nginx" / "nginx.conf"
     target.parent.mkdir(parents=True)
     target.write_text("EXISTS")
@@ -443,7 +489,7 @@ def test_plan_returns_skip_for_existing_file(tmp_path: Path) -> None:
 
 
 def test_plan_returns_overwrite_for_existing_file(tmp_path: Path) -> None:
-    """plan() возвращает action='overwrite' для существующего файла с политикой OVERWRITE."""
+    """plan() returns action='overwrite' for an existing file with OVERWRITE policy."""
     target = tmp_path / "nginx" / "nginx.conf"
     target.parent.mkdir(parents=True)
     target.write_text("EXISTS")
@@ -458,7 +504,7 @@ def test_plan_returns_overwrite_for_existing_file(tmp_path: Path) -> None:
 
 
 def test_apply_executes_plan(tmp_path: Path) -> None:
-    """apply(plan()) эквивалентен run() — файл создаётся."""
+    """apply(plan()) is equivalent to run(); the file is created."""
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
         source_template="nginx/nginx-proxy.conf.j2",
@@ -471,11 +517,11 @@ def test_apply_executes_plan(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# --set parsing (unit test — без запуска CLI)
+# --set parsing (unit test without starting the CLI)
 # ---------------------------------------------------------------------------
 
 def test_set_overrides_applied_to_answers(tmp_path: Path) -> None:
-    """--set переопределяет ответ мастера в шаблоне."""
+    """--set overrides the wizard answer in the template."""
     overridden_answers = {**NGINX_ANSWERS, "nginx_upstream": "custom-app:9999"}
     artifact = ArtifactDef(
         relative_path="nginx/nginx.conf",
@@ -488,11 +534,11 @@ def test_set_overrides_applied_to_answers(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ArtifactContext — новые поля (smart_env, depends_on, parent_service, service_def)
+# ArtifactContext — new fields (smart_env, depends_on, parent_service, service_def)
 # ---------------------------------------------------------------------------
 
 def test_artifact_context_new_fields_in_template_vars(tmp_path: Path) -> None:
-    """as_template_vars() включает smart_env, depends_on, parent_service."""
+    """as_template_vars() includes smart_env, depends_on, parent_service."""
     ctx = ArtifactContext(
         service_name="logstash",
         answers={},
@@ -513,7 +559,7 @@ def test_artifact_context_new_fields_in_template_vars(tmp_path: Path) -> None:
 
 
 def test_artifact_context_defaults_for_new_fields(tmp_path: Path) -> None:
-    """Новые поля имеют безопасные defaults (пустые коллекции / None)."""
+    """New fields have safe defaults (empty collections / None)."""
     ctx = ArtifactContext(
         service_name="svc",
         answers={},
@@ -532,7 +578,7 @@ def test_artifact_context_defaults_for_new_fields(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Logstash — шаблоны
+# Logstash — templates
 # ---------------------------------------------------------------------------
 
 LOGSTASH_ANSWERS_STDOUT = {
@@ -565,7 +611,7 @@ def _make_logstash_context(base_dir: Path, answers: dict) -> ArtifactContext:
 
 
 def test_logstash_beats_stdout_created(tmp_path: Path) -> None:
-    """Logstash beats-stdout pipeline config создаётся когда условие выполнено."""
+    """Logstash beats-stdout pipeline config is created when the condition is met."""
     artifact = ArtifactDef(
         relative_path="logstash/pipeline/logstash.conf",
         source_template="logstash/logstash-beats-stdout.conf.j2",
@@ -585,7 +631,7 @@ def test_logstash_beats_stdout_created(tmp_path: Path) -> None:
 
 
 def test_logstash_beats_stdout_skipped_when_es_mode(tmp_path: Path) -> None:
-    """Logstash beats-stdout артефакт неактивен когда выбран режим beats-es."""
+    """Logstash beats-stdout artifact is inactive when beats-es mode is selected."""
     artifact = ArtifactDef(
         relative_path="logstash/pipeline/logstash.conf",
         source_template="logstash/logstash-beats-stdout.conf.j2",
@@ -594,12 +640,12 @@ def test_logstash_beats_stdout_skipped_when_es_mode(tmp_path: Path) -> None:
     ctx = _make_logstash_context(tmp_path, LOGSTASH_ANSWERS_ES)
     pipeline = ArtifactPipeline([artifact], ctx)
     plans = pipeline.plan()
-    # Условие не выполнено → артефакт не включён в план
+    # Condition is not met → artifact is not included in the plan.
     assert len(plans) == 0
 
 
 def test_logstash_beats_es_created(tmp_path: Path) -> None:
-    """Logstash beats-es pipeline config создаётся с правильным ES host."""
+    """Logstash beats-es pipeline config is created with the correct ES host."""
     artifact = ArtifactDef(
         relative_path="logstash/pipeline/logstash.conf",
         source_template="logstash/logstash-beats-es.conf.j2",
@@ -618,7 +664,7 @@ def test_logstash_beats_es_created(tmp_path: Path) -> None:
 
 
 def test_logstash_beats_es_uses_smart_env_host(tmp_path: Path) -> None:
-    """ES host берётся из smart_env если logstash_es_host не задан явно."""
+    """ES host is taken from smart_env when logstash_es_host is not set explicitly."""
     answers = {
         "logstash_pipeline": "beats-es",
         "logstash_pipeline_stdout": False,
@@ -640,7 +686,7 @@ def test_logstash_beats_es_uses_smart_env_host(tmp_path: Path) -> None:
 
 
 def test_logstash_yml_always_created(tmp_path: Path) -> None:
-    """logstash.yml создаётся всегда (нет условия)."""
+    """logstash.yml is always created (no condition)."""
     artifact = ArtifactDef(
         relative_path="logstash/config/logstash.yml",
         source_template="logstash/logstash.yml.j2",
@@ -656,7 +702,7 @@ def test_logstash_yml_always_created(tmp_path: Path) -> None:
 
 
 def test_logstash_conditional_only_one_pipeline_active(tmp_path: Path) -> None:
-    """Из двух conditional артефактов активен ровно один."""
+    """Exactly one of two conditional artifacts is active."""
     artifacts = [
         ArtifactDef(
             relative_path="logstash/pipeline/logstash.conf",
@@ -673,7 +719,7 @@ def test_logstash_conditional_only_one_pipeline_active(tmp_path: Path) -> None:
             source_template="logstash/logstash.yml.j2",
         ),
     ]
-    # Режим beats-es: активны только beats-es + logstash.yml
+    # beats-es mode: only beats-es + logstash.yml are active.
     ctx = _make_logstash_context(tmp_path, LOGSTASH_ANSWERS_ES)
     pipeline = ArtifactPipeline(artifacts, ctx)
     plans = pipeline.plan()
@@ -689,7 +735,7 @@ def test_logstash_conditional_only_one_pipeline_active(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_logstash_smart_mapping_detects_elasticsearch() -> None:
-    """_logstash_mapping устанавливает ES_HOST и depends_on при наличии elasticsearch."""
+    """_logstash_mapping sets ES_HOST and depends_on when elasticsearch exists."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("logstash", ["elasticsearch", "redis"], answers)
@@ -700,7 +746,7 @@ def test_logstash_smart_mapping_detects_elasticsearch() -> None:
 
 
 def test_logstash_smart_mapping_detects_opensearch() -> None:
-    """_logstash_mapping работает и с opensearch."""
+    """_logstash_mapping also works with opensearch."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("logstash", ["opensearch"], answers)
@@ -709,7 +755,7 @@ def test_logstash_smart_mapping_detects_opensearch() -> None:
 
 
 def test_logstash_smart_mapping_noop_without_es() -> None:
-    """_logstash_mapping не изменяет answers если ES/OpenSearch не найден."""
+    """_logstash_mapping does not change answers when ES/OpenSearch is missing."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("logstash", ["redis", "postgres"], answers)
@@ -718,7 +764,7 @@ def test_logstash_smart_mapping_noop_without_es() -> None:
 
 
 def test_logstash_get_candidate_parents() -> None:
-    """get_candidate_parents возвращает ES/OpenSearch сервисы для logstash."""
+    """get_candidate_parents returns ES/OpenSearch services for logstash."""
     from rdt.smart_mapping import get_candidate_parents
     candidates = get_candidate_parents("logstash", ["elasticsearch", "redis", "opensearch"])
     assert "elasticsearch" in candidates
@@ -731,7 +777,7 @@ def test_logstash_get_candidate_parents() -> None:
 # ---------------------------------------------------------------------------
 
 def test_scaffold_plan_create_for_new_dir(tmp_path: Path) -> None:
-    """ScaffoldPipeline.plan() возвращает 'create' для несуществующей директории."""
+    """ScaffoldPipeline.plan() returns 'create' for a missing directory."""
     from rdt.artifacts import DirectoryDef, ScaffoldPipeline
     dirs = [DirectoryDef(relative_path="logstash/pipeline")]
     sp = ScaffoldPipeline(dirs, tmp_path)
@@ -742,7 +788,7 @@ def test_scaffold_plan_create_for_new_dir(tmp_path: Path) -> None:
 
 
 def test_scaffold_plan_skip_for_existing_dir(tmp_path: Path) -> None:
-    """ScaffoldPipeline.plan() возвращает 'skip' для уже существующей директории."""
+    """ScaffoldPipeline.plan() returns 'skip' for an existing directory."""
     from rdt.artifacts import DirectoryDef, ScaffoldPipeline
     existing = tmp_path / "data"
     existing.mkdir()
@@ -754,7 +800,7 @@ def test_scaffold_plan_skip_for_existing_dir(tmp_path: Path) -> None:
 
 
 def test_scaffold_apply_creates_directories(tmp_path: Path) -> None:
-    """ScaffoldPipeline.apply() создаёт директории и возвращает status='created'."""
+    """ScaffoldPipeline.apply() creates directories and returns status='created'."""
     from rdt.artifacts import DirectoryDef, ScaffoldPipeline
     dirs = [
         DirectoryDef(relative_path="logstash/pipeline"),
@@ -769,7 +815,7 @@ def test_scaffold_apply_creates_directories(tmp_path: Path) -> None:
 
 
 def test_scaffold_apply_skip_existing(tmp_path: Path) -> None:
-    """ScaffoldPipeline.apply() возвращает status='already_exists' для существующих директорий."""
+    """ScaffoldPipeline.apply() returns status='already_exists' for existing directories."""
     from rdt.artifacts import DirectoryDef, ScaffoldPipeline
     existing = tmp_path / "nginx"
     existing.mkdir()
@@ -782,21 +828,21 @@ def test_scaffold_apply_skip_existing(tmp_path: Path) -> None:
 
 
 def test_scaffold_has_errors_false(tmp_path: Path) -> None:
-    """ScaffoldPipeline.has_errors() возвращает False при успешных результатах."""
+    """ScaffoldPipeline.has_errors() returns False for successful results."""
     from rdt.artifacts import DirectoryDef, ScaffoldPipeline, ScaffoldResult
     results = [ScaffoldResult(path=tmp_path / "a", status="created")]
     assert ScaffoldPipeline.has_errors(results) is False
 
 
 def test_scaffold_has_errors_true(tmp_path: Path) -> None:
-    """ScaffoldPipeline.has_errors() возвращает True если есть ошибка."""
+    """ScaffoldPipeline.has_errors() returns True when there is an error."""
     from rdt.artifacts import ScaffoldPipeline, ScaffoldResult
     results = [ScaffoldResult(path=tmp_path / "a", status="error", error="permission denied")]
     assert ScaffoldPipeline.has_errors(results) is True
 
 
 def test_scaffold_multiple_mixed(tmp_path: Path) -> None:
-    """ScaffoldPipeline обрабатывает mix новых и существующих директорий."""
+    """ScaffoldPipeline handles a mix of new and existing directories."""
     from rdt.artifacts import DirectoryDef, ScaffoldPipeline
     existing = tmp_path / "existing"
     existing.mkdir()
@@ -812,11 +858,11 @@ def test_scaffold_multiple_mixed(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# P2: BootstrapHint — разграничение bootstrap/artifact
+# P2: BootstrapHint — bootstrap/artifact separation
 # ---------------------------------------------------------------------------
 
 def test_bootstrap_hint_fields() -> None:
-    """BootstrapHint хранит message и опциональный command."""
+    """BootstrapHint stores message and an optional command."""
     from rdt.artifacts import BootstrapHint
     hint = BootstrapHint(message="Run init script", command="docker exec -it svc init.sh")
     assert hint.message == "Run init script"
@@ -824,7 +870,7 @@ def test_bootstrap_hint_fields() -> None:
 
 
 def test_bootstrap_hint_without_command() -> None:
-    """BootstrapHint работает без команды."""
+    """BootstrapHint works without a command."""
     from rdt.artifacts import BootstrapHint
     hint = BootstrapHint(message="Check logs manually")
     assert hint.message == "Check logs manually"
@@ -832,7 +878,7 @@ def test_bootstrap_hint_without_command() -> None:
 
 
 def test_service_preset_has_scaffolds_and_hints() -> None:
-    """ServicePreset.scaffolds и bootstrap_hints доступны и имеют правильные типы."""
+    """ServicePreset.scaffolds and bootstrap_hints are available and have correct types."""
     from rdt.presets.catalog import LOGSTASH
     from rdt.artifacts import DirectoryDef, BootstrapHint
     assert len(LOGSTASH.scaffolds) >= 2
@@ -842,7 +888,7 @@ def test_service_preset_has_scaffolds_and_hints() -> None:
 
 
 def test_service_preset_scaffolds_paths() -> None:
-    """LOGSTASH пресет декларирует корректные пути директорий."""
+    """LOGSTASH preset declares correct directory paths."""
     from rdt.presets.catalog import LOGSTASH
     paths = [d.relative_path for d in LOGSTASH.scaffolds]
     assert "logstash/pipeline" in paths
@@ -850,7 +896,7 @@ def test_service_preset_scaffolds_paths() -> None:
 
 
 def test_logstash_scaffold_creates_dirs(tmp_path: Path) -> None:
-    """ScaffoldPipeline + LOGSTASH.scaffolds создаёт logstash/pipeline и logstash/config."""
+    """ScaffoldPipeline + LOGSTASH.scaffolds creates logstash/pipeline and logstash/config."""
     from rdt.artifacts import ScaffoldPipeline
     from rdt.presets.catalog import LOGSTASH
     sp = ScaffoldPipeline(LOGSTASH.scaffolds, tmp_path)
@@ -861,7 +907,7 @@ def test_logstash_scaffold_creates_dirs(tmp_path: Path) -> None:
 
 
 def test_preset_without_scaffolds_has_empty_list() -> None:
-    """ServicePreset без scaffolds имеет пустой список по умолчанию."""
+    """ServicePreset without scaffolds has an empty list by default."""
     from rdt.presets.catalog import POSTGRES
     assert POSTGRES.scaffolds == []
     assert POSTGRES.bootstrap_hints == []
@@ -872,9 +918,9 @@ def test_preset_without_scaffolds_has_empty_list() -> None:
 # ---------------------------------------------------------------------------
 
 def test_scaffold_error_detected_by_has_errors(tmp_path: Path) -> None:
-    """ScaffoldPipeline.has_errors() возвращает True если хотя бы одна директория не создана."""
+    """ScaffoldPipeline.has_errors() returns True when at least one directory was not created."""
     from rdt.artifacts import ScaffoldPipeline, ScaffoldResult
-    # Создаём результат с ошибкой напрямую
+    # Create an error result directly.
     error_result = ScaffoldResult(path=tmp_path / "bad", status="error", error="permission denied")
     ok_result = ScaffoldResult(path=tmp_path / "ok", status="created")
     assert ScaffoldPipeline.has_errors([error_result, ok_result]) is True
@@ -882,11 +928,11 @@ def test_scaffold_error_detected_by_has_errors(tmp_path: Path) -> None:
 
 
 def test_scaffold_apply_returns_error_on_permission_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """ScaffoldPipeline.apply() возвращает status='error' если mkdir бросает исключение."""
+    """ScaffoldPipeline.apply() returns status='error' when mkdir raises an exception."""
     from rdt.artifacts import DirectoryDef, ScaffoldPipeline
     import pathlib
 
-    # Патчим Path.mkdir чтобы бросал PermissionError
+    # Patch Path.mkdir to raise PermissionError.
     original_mkdir = pathlib.Path.mkdir
 
     def mock_mkdir(self, *args, **kwargs):
@@ -908,26 +954,23 @@ def test_scaffold_apply_returns_error_on_permission_failure(tmp_path: Path, monk
 # ---------------------------------------------------------------------------
 
 def test_rollback_restores_compose(tmp_path: Path) -> None:
-    """_do_rollback восстанавливает compose файл из снимка."""
-    from rich.console import Console
-    from rdt.cli import _do_rollback
+    """_rollback restores the compose file from a snapshot."""
+    from rdt.core import _rollback
 
     compose_file = tmp_path / "docker-compose.yml"
     original = "version: '3'\nservices: {}\n"
     compose_file.write_text(original + "# modified\n", encoding="utf-8")
 
-    console = Console(quiet=True)
-    _do_rollback(
-        console=console,
+    _rollback(
         compose_file=compose_file,
         compose_was_new=False,
         compose_snapshot=original,
         env_file=tmp_path / ".env",
-        env_existed_before=False,
+        env_existed=False,
         env_snapshot=None,
-        env_example_file=tmp_path / ".env.example",
-        env_example_existed_before=False,
-        env_example_snapshot=None,
+        env_example=tmp_path / ".env.example",
+        env_ex_existed=False,
+        env_ex_snapshot=None,
         scaffold_results=[],
         artifact_results=[],
     )
@@ -935,25 +978,22 @@ def test_rollback_restores_compose(tmp_path: Path) -> None:
 
 
 def test_rollback_removes_new_compose(tmp_path: Path) -> None:
-    """_do_rollback удаляет compose файл если он был создан в текущем запуске."""
-    from rich.console import Console
-    from rdt.cli import _do_rollback
+    """_rollback removes the compose file if it was created in the current run."""
+    from rdt.core import _rollback
 
     compose_file = tmp_path / "docker-compose.yml"
     compose_file.write_text("new content", encoding="utf-8")
 
-    console = Console(quiet=True)
-    _do_rollback(
-        console=console,
+    _rollback(
         compose_file=compose_file,
         compose_was_new=True,
         compose_snapshot=None,
         env_file=tmp_path / ".env",
-        env_existed_before=False,
+        env_existed=False,
         env_snapshot=None,
-        env_example_file=tmp_path / ".env.example",
-        env_example_existed_before=False,
-        env_example_snapshot=None,
+        env_example=tmp_path / ".env.example",
+        env_ex_existed=False,
+        env_ex_snapshot=None,
         scaffold_results=[],
         artifact_results=[],
     )
@@ -961,9 +1001,8 @@ def test_rollback_removes_new_compose(tmp_path: Path) -> None:
 
 
 def test_rollback_removes_created_artifact(tmp_path: Path) -> None:
-    """_do_rollback удаляет созданные артефакты (status='created')."""
-    from rich.console import Console
-    from rdt.cli import _do_rollback
+    """_rollback removes created artifacts (status='created')."""
+    from rdt.core import _rollback
     from rdt.artifacts import ArtifactResult
 
     artifact_file = tmp_path / "nginx" / "nginx.conf"
@@ -972,18 +1011,16 @@ def test_rollback_removes_created_artifact(tmp_path: Path) -> None:
 
     results = [ArtifactResult(path=artifact_file, status="created")]
 
-    console = Console(quiet=True)
-    _do_rollback(
-        console=console,
+    _rollback(
         compose_file=tmp_path / "docker-compose.yml",
         compose_was_new=False,
         compose_snapshot=None,
         env_file=tmp_path / ".env",
-        env_existed_before=True,
+        env_existed=True,
         env_snapshot=None,
-        env_example_file=tmp_path / ".env.example",
-        env_example_existed_before=True,
-        env_example_snapshot=None,
+        env_example=tmp_path / ".env.example",
+        env_ex_existed=True,
+        env_ex_snapshot=None,
         scaffold_results=[],
         artifact_results=results,
     )
@@ -991,9 +1028,8 @@ def test_rollback_removes_created_artifact(tmp_path: Path) -> None:
 
 
 def test_rollback_removes_empty_scaffold_dir(tmp_path: Path) -> None:
-    """_do_rollback удаляет пустые scaffold-директории (status='created')."""
-    from rich.console import Console
-    from rdt.cli import _do_rollback
+    """_rollback removes empty scaffold directories (status='created')."""
+    from rdt.core import _rollback
     from rdt.artifacts import ScaffoldResult
 
     scaffold_dir = tmp_path / "logstash" / "pipeline"
@@ -1001,18 +1037,16 @@ def test_rollback_removes_empty_scaffold_dir(tmp_path: Path) -> None:
 
     results = [ScaffoldResult(path=scaffold_dir, status="created")]
 
-    console = Console(quiet=True)
-    _do_rollback(
-        console=console,
+    _rollback(
         compose_file=tmp_path / "docker-compose.yml",
         compose_was_new=False,
         compose_snapshot=None,
         env_file=tmp_path / ".env",
-        env_existed_before=True,
+        env_existed=True,
         env_snapshot=None,
-        env_example_file=tmp_path / ".env.example",
-        env_example_existed_before=True,
-        env_example_snapshot=None,
+        env_example=tmp_path / ".env.example",
+        env_ex_existed=True,
+        env_ex_snapshot=None,
         scaffold_results=results,
         artifact_results=[],
     )
@@ -1020,9 +1054,8 @@ def test_rollback_removes_empty_scaffold_dir(tmp_path: Path) -> None:
 
 
 def test_rollback_does_not_remove_nonempty_scaffold_dir(tmp_path: Path) -> None:
-    """_do_rollback не удаляет непустые scaffold-директории."""
-    from rich.console import Console
-    from rdt.cli import _do_rollback
+    """_rollback does not remove non-empty scaffold directories."""
+    from rdt.core import _rollback
     from rdt.artifacts import ScaffoldResult
 
     scaffold_dir = tmp_path / "logstash" / "pipeline"
@@ -1031,18 +1064,16 @@ def test_rollback_does_not_remove_nonempty_scaffold_dir(tmp_path: Path) -> None:
 
     results = [ScaffoldResult(path=scaffold_dir, status="created")]
 
-    console = Console(quiet=True)
-    _do_rollback(
-        console=console,
+    _rollback(
         compose_file=tmp_path / "docker-compose.yml",
         compose_was_new=False,
         compose_snapshot=None,
         env_file=tmp_path / ".env",
-        env_existed_before=True,
+        env_existed=True,
         env_snapshot=None,
-        env_example_file=tmp_path / ".env.example",
-        env_example_existed_before=True,
-        env_example_snapshot=None,
+        env_example=tmp_path / ".env.example",
+        env_ex_existed=True,
+        env_ex_snapshot=None,
         scaffold_results=results,
         artifact_results=[],
     )
@@ -1055,7 +1086,7 @@ def test_rollback_does_not_remove_nonempty_scaffold_dir(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_kibana_preset_exists() -> None:
-    """KIBANA пресет присутствует в каталоге и имеет правильные базовые поля."""
+    """KIBANA preset exists in the catalog and has correct base fields."""
     from rdt.presets.catalog import ALL_PRESETS, KIBANA
     assert "kibana" in ALL_PRESETS
     assert ALL_PRESETS["kibana"] is KIBANA
@@ -1066,7 +1097,7 @@ def test_kibana_preset_exists() -> None:
 
 
 def test_kibana_preset_env_contains_required_keys() -> None:
-    """KIBANA пресет содержит обязательные переменные окружения."""
+    """KIBANA preset contains required environment variables."""
     from rdt.presets.catalog import KIBANA
     env_keys = set(KIBANA.default_env.keys())
     assert "ELASTICSEARCH_HOSTS" in env_keys
@@ -1075,7 +1106,7 @@ def test_kibana_preset_env_contains_required_keys() -> None:
 
 
 def test_kibana_smart_mapping_detects_elasticsearch() -> None:
-    """Kibana Smart Mapping корректно подхватывает elasticsearch сервис."""
+    """Kibana Smart Mapping correctly picks up the elasticsearch service."""
     from rdt.smart_mapping import apply_smart_mapping, get_candidate_parents
     existing = ["elasticsearch"]
     candidates = get_candidate_parents("kibana", existing)
@@ -1088,7 +1119,7 @@ def test_kibana_smart_mapping_detects_elasticsearch() -> None:
 
 
 def test_kibana_smart_mapping_detects_opensearch() -> None:
-    """Kibana Smart Mapping корректно подхватывает opensearch сервис."""
+    """Kibana Smart Mapping correctly picks up the opensearch service."""
     from rdt.smart_mapping import apply_smart_mapping, get_candidate_parents
     existing = ["opensearch"]
     candidates = get_candidate_parents("kibana", existing)
@@ -1100,7 +1131,7 @@ def test_kibana_smart_mapping_detects_opensearch() -> None:
 
 
 def test_kibana_smart_mapping_noop_without_es() -> None:
-    """Kibana Smart Mapping не добавляет зависимостей если нет ES/OpenSearch."""
+    """Kibana Smart Mapping does not add dependencies when ES/OpenSearch is missing."""
     from rdt.smart_mapping import apply_smart_mapping, get_candidate_parents
     existing = ["postgres", "redis"]
     candidates = get_candidate_parents("kibana", existing)
@@ -1112,14 +1143,14 @@ def test_kibana_smart_mapping_noop_without_es() -> None:
 
 
 def test_kibana_env_defaults_registered() -> None:
-    """SERVICE_DEFAULTS содержит значения для Kibana credentials."""
+    """SERVICE_DEFAULTS contains values for Kibana credentials."""
     from rdt.env_manager import SERVICE_DEFAULTS
     assert "KIBANA_SYSTEM_PASSWORD" in SERVICE_DEFAULTS
     assert "KIBANA_ENCRYPTION_KEY" in SERVICE_DEFAULTS
 
 
 def test_kibana_preset_has_bootstrap_hint() -> None:
-    """KIBANA пресет содержит bootstrap-подсказку для настройки kibana_system пользователя."""
+    """KIBANA preset contains a bootstrap hint for configuring the kibana_system user."""
     from rdt.presets.catalog import KIBANA
     assert len(KIBANA.bootstrap_hints) >= 1
     hint = KIBANA.bootstrap_hints[0]
@@ -1131,7 +1162,7 @@ def test_kibana_preset_has_bootstrap_hint() -> None:
 # ---------------------------------------------------------------------------
 
 def test_seq_preset_exists() -> None:
-    """SEQ пресет присутствует в каталоге и имеет правильные базовые поля."""
+    """SEQ preset exists in the catalog and has correct base fields."""
     from rdt.presets.catalog import ALL_PRESETS, SEQ
     assert "seq" in ALL_PRESETS
     assert ALL_PRESETS["seq"] is SEQ
@@ -1140,27 +1171,27 @@ def test_seq_preset_exists() -> None:
 
 
 def test_seq_preset_env_contains_accept_eula() -> None:
-    """SEQ пресет содержит ACCEPT_EULA в переменных окружения."""
+    """SEQ preset contains ACCEPT_EULA in environment variables."""
     from rdt.presets.catalog import SEQ
     assert "ACCEPT_EULA" in SEQ.default_env
     assert SEQ.default_env["ACCEPT_EULA"] == "Y"
 
 
 def test_seq_preset_no_artifacts() -> None:
-    """SEQ пресет не требует companion-артефактов."""
+    """SEQ preset does not require companion artifacts."""
     from rdt.presets.catalog import SEQ
     assert SEQ.artifacts == []
     assert SEQ.scaffolds == []
 
 
 def test_seq_preset_has_volume() -> None:
-    """SEQ пресет объявляет volume для персистентного хранилища."""
+    """SEQ preset declares a volume for persistent storage."""
     from rdt.presets.catalog import SEQ
     assert len(SEQ.volumes) >= 1
 
 
 def test_seq_preset_has_bootstrap_hint() -> None:
-    """SEQ пресет содержит bootstrap-подсказку."""
+    """SEQ preset contains a bootstrap hint."""
     from rdt.presets.catalog import SEQ
     assert len(SEQ.bootstrap_hints) >= 1
 
@@ -1170,7 +1201,7 @@ def test_seq_preset_has_bootstrap_hint() -> None:
 # ---------------------------------------------------------------------------
 
 def test_filebeat_preset_exists() -> None:
-    """FILEBEAT пресет присутствует в каталоге и имеет правильные базовые поля."""
+    """FILEBEAT preset exists in the catalog and has correct base fields."""
     from rdt.presets.catalog import ALL_PRESETS, FILEBEAT
     assert "filebeat" in ALL_PRESETS
     assert ALL_PRESETS["filebeat"] is FILEBEAT
@@ -1180,7 +1211,7 @@ def test_filebeat_preset_exists() -> None:
 
 
 def test_filebeat_preset_has_volumes() -> None:
-    """FILEBEAT пресет объявляет volumes для config и data."""
+    """FILEBEAT preset declares volumes for config and data."""
     from rdt.presets.catalog import FILEBEAT
     assert len(FILEBEAT.volumes) >= 2
     volume_str = " ".join(FILEBEAT.volumes)
@@ -1189,7 +1220,7 @@ def test_filebeat_preset_has_volumes() -> None:
 
 
 def test_filebeat_preset_has_artifacts() -> None:
-    """FILEBEAT пресет содержит 3 conditional артефакта (logstash / es / stdout)."""
+    """FILEBEAT preset contains 3 conditional artifacts (logstash / es / stdout)."""
     from rdt.presets.catalog import FILEBEAT
     assert len(FILEBEAT.artifacts) == 3
     conditions = {a.condition for a in FILEBEAT.artifacts}
@@ -1199,7 +1230,7 @@ def test_filebeat_preset_has_artifacts() -> None:
 
 
 def test_filebeat_preset_has_scaffold() -> None:
-    """FILEBEAT пресет декларирует scaffold-директорию filebeat/."""
+    """FILEBEAT preset declares the filebeat/ scaffold directory."""
     from rdt.presets.catalog import FILEBEAT
     from rdt.artifacts import DirectoryDef
     assert len(FILEBEAT.scaffolds) >= 1
@@ -1209,13 +1240,13 @@ def test_filebeat_preset_has_scaffold() -> None:
 
 
 def test_filebeat_preset_has_bootstrap_hints() -> None:
-    """FILEBEAT пресет содержит bootstrap-подсказки."""
+    """FILEBEAT preset contains bootstrap hints."""
     from rdt.presets.catalog import FILEBEAT
     assert len(FILEBEAT.bootstrap_hints) >= 1
 
 
 # ---------------------------------------------------------------------------
-# Filebeat — шаблоны
+# Filebeat — templates
 # ---------------------------------------------------------------------------
 
 FILEBEAT_ANSWERS_LOGSTASH = {
@@ -1264,7 +1295,7 @@ def _make_filebeat_context(base_dir: Path, answers: dict) -> ArtifactContext:
 
 
 def test_filebeat_logstash_template_created(tmp_path: Path) -> None:
-    """filebeat-logstash.yml.j2 создаётся и содержит logstash host."""
+    """filebeat-logstash.yml.j2 is created and contains the logstash host."""
     artifact = ArtifactDef(
         relative_path="filebeat/filebeat.yml",
         source_template="filebeat/filebeat-logstash.yml.j2",
@@ -1284,7 +1315,7 @@ def test_filebeat_logstash_template_created(tmp_path: Path) -> None:
 
 
 def test_filebeat_es_template_created(tmp_path: Path) -> None:
-    """filebeat-es.yml.j2 создаётся и содержит elasticsearch host."""
+    """filebeat-es.yml.j2 is created and contains the elasticsearch host."""
     artifact = ArtifactDef(
         relative_path="filebeat/filebeat.yml",
         source_template="filebeat/filebeat-es.yml.j2",
@@ -1303,7 +1334,7 @@ def test_filebeat_es_template_created(tmp_path: Path) -> None:
 
 
 def test_filebeat_stdout_template_created(tmp_path: Path) -> None:
-    """filebeat-stdout.yml.j2 создаётся для debug-режима."""
+    """filebeat-stdout.yml.j2 is created for debug mode."""
     artifact = ArtifactDef(
         relative_path="filebeat/filebeat.yml",
         source_template="filebeat/filebeat-stdout.yml.j2",
@@ -1321,7 +1352,7 @@ def test_filebeat_stdout_template_created(tmp_path: Path) -> None:
 
 
 def test_filebeat_logstash_template_skipped_in_es_mode(tmp_path: Path) -> None:
-    """Логстэш-артефакт неактивен когда выбран elasticsearch-режим."""
+    """Logstash artifact is inactive when elasticsearch mode is selected."""
     artifact = ArtifactDef(
         relative_path="filebeat/filebeat.yml",
         source_template="filebeat/filebeat-logstash.yml.j2",
@@ -1331,11 +1362,11 @@ def test_filebeat_logstash_template_skipped_in_es_mode(tmp_path: Path) -> None:
     ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_ES)
     pipeline = ArtifactPipeline([artifact], ctx)
     plans = pipeline.plan()
-    assert len(plans) == 0  # условие не выполнено → неактивен
+    assert len(plans) == 0  # condition is not met → inactive
 
 
 def test_filebeat_conditional_only_one_active(tmp_path: Path) -> None:
-    """Из трёх conditional артефактов активен ровно один при logstash-режиме."""
+    """Exactly one of three conditional artifacts is active in logstash mode."""
     from rdt.presets.catalog import FILEBEAT
     ctx = _make_filebeat_context(tmp_path, FILEBEAT_ANSWERS_LOGSTASH)
     pipeline = ArtifactPipeline(FILEBEAT.artifacts, ctx)
@@ -1345,7 +1376,7 @@ def test_filebeat_conditional_only_one_active(tmp_path: Path) -> None:
 
 
 def test_filebeat_kibana_host_rendered_in_logstash_template(tmp_path: Path) -> None:
-    """setup.kibana секция появляется когда filebeat_kibana_host задан."""
+    """setup.kibana section appears when filebeat_kibana_host is set."""
     answers = {**FILEBEAT_ANSWERS_LOGSTASH, "filebeat_kibana_host": "kibana:5601"}
     artifact = ArtifactDef(
         relative_path="filebeat/filebeat.yml",
@@ -1362,7 +1393,7 @@ def test_filebeat_kibana_host_rendered_in_logstash_template(tmp_path: Path) -> N
 
 
 def test_filebeat_kibana_section_absent_when_no_host(tmp_path: Path) -> None:
-    """setup.kibana секция отсутствует когда filebeat_kibana_host пустой."""
+    """setup.kibana section is absent when filebeat_kibana_host is empty."""
     artifact = ArtifactDef(
         relative_path="filebeat/filebeat.yml",
         source_template="filebeat/filebeat-logstash.yml.j2",
@@ -1381,7 +1412,7 @@ def test_filebeat_kibana_section_absent_when_no_host(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_filebeat_smart_mapping_prefers_logstash() -> None:
-    """Filebeat smart mapping выбирает Logstash при наличии и Logstash и ES."""
+    """Filebeat smart mapping chooses Logstash when both Logstash and ES exist."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("filebeat", ["elasticsearch", "logstash"], answers)
@@ -1393,7 +1424,7 @@ def test_filebeat_smart_mapping_prefers_logstash() -> None:
 
 
 def test_filebeat_smart_mapping_falls_back_to_es() -> None:
-    """Filebeat smart mapping выбирает ES если Logstash отсутствует."""
+    """Filebeat smart mapping chooses ES when Logstash is absent."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("filebeat", ["elasticsearch", "redis"], answers)
@@ -1404,7 +1435,7 @@ def test_filebeat_smart_mapping_falls_back_to_es() -> None:
 
 
 def test_filebeat_smart_mapping_falls_back_to_opensearch() -> None:
-    """Filebeat smart mapping работает с opensearch."""
+    """Filebeat smart mapping works with opensearch."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("filebeat", ["opensearch"], answers)
@@ -1413,7 +1444,7 @@ def test_filebeat_smart_mapping_falls_back_to_opensearch() -> None:
 
 
 def test_filebeat_smart_mapping_stdout_when_no_target() -> None:
-    """Filebeat smart mapping выбирает stdout если нет ни Logstash ни ES."""
+    """Filebeat smart mapping chooses stdout when neither Logstash nor ES exists."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("filebeat", ["redis", "postgres"], answers)
@@ -1422,7 +1453,7 @@ def test_filebeat_smart_mapping_stdout_when_no_target() -> None:
 
 
 def test_filebeat_smart_mapping_detects_kibana() -> None:
-    """Filebeat smart mapping добавляет Kibana host если Kibana присутствует."""
+    """Filebeat smart mapping adds Kibana host when Kibana is present."""
     from rdt.smart_mapping import apply_smart_mapping
     answers: dict = {}
     result = apply_smart_mapping("filebeat", ["logstash", "kibana"], answers)
@@ -1431,7 +1462,7 @@ def test_filebeat_smart_mapping_detects_kibana() -> None:
 
 
 def test_filebeat_get_candidate_parents() -> None:
-    """get_candidate_parents возвращает Logstash / ES / OpenSearch / Kibana для filebeat."""
+    """get_candidate_parents returns Logstash / ES / OpenSearch / Kibana for filebeat."""
     from rdt.smart_mapping import get_candidate_parents
     existing = ["logstash", "elasticsearch", "opensearch", "kibana", "redis"]
     candidates = get_candidate_parents("filebeat", existing)
@@ -1443,7 +1474,7 @@ def test_filebeat_get_candidate_parents() -> None:
 
 
 def test_filebeat_scaffold_creates_dir(tmp_path: Path) -> None:
-    """ScaffoldPipeline + FILEBEAT.scaffolds создаёт filebeat/."""
+    """ScaffoldPipeline + FILEBEAT.scaffolds creates filebeat/."""
     from rdt.artifacts import ScaffoldPipeline
     from rdt.presets.catalog import FILEBEAT
     sp = ScaffoldPipeline(FILEBEAT.scaffolds, tmp_path)
@@ -1458,7 +1489,7 @@ def test_filebeat_scaffold_creates_dir(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_traefik_preset_exists() -> None:
-    """TRAEFIK пресет присутствует в каталоге и имеет правильные базовые поля."""
+    """TRAEFIK preset exists in the catalog and has correct base fields."""
     from rdt.presets.catalog import ALL_PRESETS, TRAEFIK
     assert "traefik" in ALL_PRESETS
     assert ALL_PRESETS["traefik"] is TRAEFIK
@@ -1469,7 +1500,7 @@ def test_traefik_preset_exists() -> None:
 
 
 def test_traefik_preset_has_artifact() -> None:
-    """TRAEFIK пресет содержит ровно один companion-артефакт (traefik.yml)."""
+    """TRAEFIK preset contains exactly one companion artifact (traefik.yml)."""
     from rdt.presets.catalog import TRAEFIK
     assert len(TRAEFIK.artifacts) == 1
     art = TRAEFIK.artifacts[0]
@@ -1478,7 +1509,7 @@ def test_traefik_preset_has_artifact() -> None:
 
 
 def test_traefik_preset_has_scaffolds() -> None:
-    """TRAEFIK пресет декларирует scaffold-директории traefik/ и traefik/dynamic/."""
+    """TRAEFIK preset declares traefik/ and traefik/dynamic/ scaffold directories."""
     from rdt.presets.catalog import TRAEFIK
     from rdt.artifacts import DirectoryDef
     assert len(TRAEFIK.scaffolds) >= 2
@@ -1489,13 +1520,13 @@ def test_traefik_preset_has_scaffolds() -> None:
 
 
 def test_traefik_preset_has_bootstrap_hints() -> None:
-    """TRAEFIK пресет содержит не менее трёх bootstrap-подсказок."""
+    """TRAEFIK preset contains at least three bootstrap hints."""
     from rdt.presets.catalog import TRAEFIK
     assert len(TRAEFIK.bootstrap_hints) >= 3
 
 
 def test_traefik_preset_empty_env() -> None:
-    """TRAEFIK пресет не имеет обязательных env-переменных (Traefik конфигурируется через YAML)."""
+    """TRAEFIK preset has no required env variables (Traefik is configured via YAML)."""
     from rdt.presets.catalog import TRAEFIK
     assert TRAEFIK.default_env == {}
 
@@ -1531,18 +1562,18 @@ TRAEFIK_ANSWERS_HTTPS = {
 
 
 def test_traefik_strategy_ports_basic() -> None:
-    """TraefikStrategy добавляет порты 80 и 8080 в базовом режиме."""
+    """TraefikStrategy adds ports 80 and 8080 in basic mode."""
     strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_BASIC)
     service: dict = {}
     strategy._enrich(service)
     assert "80:80" in service["ports"]
     assert "8080:8080" in service["ports"]
-    # HTTPS не включён — порт 443 не должен быть
+    # HTTPS is disabled, so port 443 must be absent.
     assert not any("443" in p for p in service["ports"])
 
 
 def test_traefik_strategy_ports_https() -> None:
-    """TraefikStrategy добавляет порт 443 когда HTTPS включён."""
+    """TraefikStrategy adds port 443 when HTTPS is enabled."""
     strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_HTTPS)
     service: dict = {}
     strategy._enrich(service)
@@ -1550,7 +1581,7 @@ def test_traefik_strategy_ports_https() -> None:
 
 
 def test_traefik_strategy_volumes_basic() -> None:
-    """TraefikStrategy монтирует docker.sock и traefik.yml (без certs в базовом режиме)."""
+    """TraefikStrategy mounts docker.sock and traefik.yml without certs in basic mode."""
     strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_BASIC)
     service: dict = {}
     strategy._enrich(service)
@@ -1561,7 +1592,7 @@ def test_traefik_strategy_volumes_basic() -> None:
 
 
 def test_traefik_strategy_volumes_https() -> None:
-    """TraefikStrategy добавляет certs-volume при включённом HTTPS."""
+    """TraefikStrategy adds a certs volume when HTTPS is enabled."""
     strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_HTTPS)
     service: dict = {}
     strategy._enrich(service)
@@ -1570,7 +1601,7 @@ def test_traefik_strategy_volumes_https() -> None:
 
 
 def test_traefik_strategy_healthcheck() -> None:
-    """TraefikStrategy устанавливает healthcheck через /ping эндпоинт."""
+    """TraefikStrategy sets healthcheck through the /ping endpoint."""
     strategy = _make_traefik_strategy(TRAEFIK_ANSWERS_BASIC)
     service: dict = {}
     strategy._enrich(service)
@@ -1581,7 +1612,7 @@ def test_traefik_strategy_healthcheck() -> None:
 
 
 def test_traefik_strategy_no_ports_when_host_network() -> None:
-    """TraefikStrategy не добавляет ports если network_type=host."""
+    """TraefikStrategy does not add ports when network_type=host."""
     answers = {**TRAEFIK_ANSWERS_BASIC, "network_type": "host"}
     strategy = _make_traefik_strategy(answers)
     service: dict = {}
@@ -1590,7 +1621,7 @@ def test_traefik_strategy_no_ports_when_host_network() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Traefik — шаблон traefik.yml.j2
+# Traefik — traefik.yml.j2 template
 # ---------------------------------------------------------------------------
 
 def _make_traefik_artifact_context(base_dir: Path, answers: dict) -> ArtifactContext:
@@ -1609,7 +1640,7 @@ def _make_traefik_artifact_context(base_dir: Path, answers: dict) -> ArtifactCon
 
 
 def test_traefik_yml_template_created_basic(tmp_path: Path) -> None:
-    """traefik.yml.j2 рендерится корректно в базовом режиме (без HTTPS)."""
+    """traefik.yml.j2 renders correctly in basic mode (without HTTPS)."""
     artifact = ArtifactDef(
         relative_path="traefik/traefik.yml",
         source_template="traefik/traefik.yml.j2",
@@ -1629,7 +1660,7 @@ def test_traefik_yml_template_created_basic(tmp_path: Path) -> None:
 
 
 def test_traefik_yml_template_no_https_block_when_disabled(tmp_path: Path) -> None:
-    """traefik.yml.j2 не содержит certificatesResolvers если HTTPS отключён."""
+    """traefik.yml.j2 does not contain certificatesResolvers when HTTPS is disabled."""
     artifact = ArtifactDef(
         relative_path="traefik/traefik.yml",
         source_template="traefik/traefik.yml.j2",
@@ -1645,7 +1676,7 @@ def test_traefik_yml_template_no_https_block_when_disabled(tmp_path: Path) -> No
 
 
 def test_traefik_yml_template_has_https_block_when_enabled(tmp_path: Path) -> None:
-    """traefik.yml.j2 содержит websecure и certificatesResolvers при HTTPS."""
+    """traefik.yml.j2 contains websecure and certificatesResolvers with HTTPS."""
     artifact = ArtifactDef(
         relative_path="traefik/traefik.yml",
         source_template="traefik/traefik.yml.j2",
@@ -1667,7 +1698,7 @@ def test_traefik_yml_template_has_https_block_when_enabled(tmp_path: Path) -> No
 # ---------------------------------------------------------------------------
 
 def test_traefik_scaffold_creates_dirs(tmp_path: Path) -> None:
-    """ScaffoldPipeline + TRAEFIK.scaffolds создаёт traefik/ и traefik/dynamic/."""
+    """ScaffoldPipeline + TRAEFIK.scaffolds creates traefik/ and traefik/dynamic/."""
     from rdt.artifacts import ScaffoldPipeline
     from rdt.presets.catalog import TRAEFIK
     sp = ScaffoldPipeline(TRAEFIK.scaffolds, tmp_path)
@@ -1682,7 +1713,7 @@ def test_traefik_scaffold_creates_dirs(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_dict_to_commented_healthcheck_test_flow_style() -> None:
-    """healthcheck.test сериализуется в inline (flow) стиле."""
+    """healthcheck.test is serialized in inline flow style."""
     from rdt.yaml_manager import _dict_to_commented
     from ruamel.yaml.comments import CommentedSeq
 
@@ -1705,7 +1736,7 @@ def test_dict_to_commented_healthcheck_test_flow_style() -> None:
 
 
 def test_save_compose_healthcheck_test_inline(tmp_path: Path) -> None:
-    """save_compose записывает healthcheck.test как inline-массив."""
+    """save_compose writes healthcheck.test as an inline array."""
     from rdt.yaml_manager import save_compose, make_base_compose, inject_service
 
     data = make_base_compose()
@@ -1728,13 +1759,13 @@ def test_save_compose_healthcheck_test_inline(tmp_path: Path) -> None:
     content = compose_file.read_text(encoding="utf-8")
 
     assert "test: [CMD-SHELL, pg_isready -U postgres || exit 1]" in content
-    assert "ports:\n    - " in content  # block-style под services.db
+    assert "ports:\n    - " in content  # block-style under services.db
     assert "volumes:\n    - pg_data:/var/lib/postgresql/data" in content
     assert "networks:\n    - rambo-net" in content
 
 
 def test_save_compose_normalizes_existing_healthcheck_test(tmp_path: Path) -> None:
-    """save_compose нормализует уже загруженные block-style healthcheck.test."""
+    """save_compose normalizes already loaded block-style healthcheck.test."""
     from rdt.yaml_manager import save_compose, load_compose
 
     compose_file = tmp_path / "docker-compose.yml"
@@ -1761,7 +1792,7 @@ services:
 
 
 def test_save_compose_traefik_healthcheck_inline(tmp_path: Path) -> None:
-    """TraefikStrategy + save_compose даёт inline healthcheck.test."""
+    """TraefikStrategy + save_compose produces inline healthcheck.test."""
     from rdt.strategies.traefik import TraefikStrategy
     from rdt.presets.catalog import TRAEFIK
     from rdt.yaml_manager import save_compose, make_base_compose, inject_service

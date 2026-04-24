@@ -1,9 +1,9 @@
 """
-CLI точка входа для RDT (Rambo Docker Tools).
-Команды: init, add, list, up, check, doctor, lang
+CLI entry point for RDT (Rambo Docker Tools).
+Commands: init, add, list, up, check, doctor, lang
 
-Слой ответственности: парсинг аргументов, интерактивный wizard, Rich-вывод.
-Вся бизнес-логика делегируется в rdt.core.
+Responsibilities: argument parsing, interactive wizard, and Rich output.
+All business logic is delegated to rdt.core.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -20,6 +20,8 @@ from rdt.yaml_manager import (
     load_compose,
     get_existing_services,
     get_services_with_healthcheck,
+    DEFAULT_COMPOSE_FILE,
+    resolve_default_compose_file,
 )
 from rdt.wizard import run_wizard, run_main_menu, ask_service_choice
 from rdt.i18n import t
@@ -43,15 +45,20 @@ app = typer.Typer(
 )
 console = Console()
 
-COMPOSE_FILE = Path("docker-compose.yml")
+COMPOSE_FILE = Path(DEFAULT_COMPOSE_FILE)
 
 
 def _resolve_project_root(file: Path) -> Path:
     return file.parent.resolve()
 
 
+def _resolve_cli_compose_file(file: Path) -> Path:
+    """Prefer an existing common Compose filename when the default path is used."""
+    return resolve_default_compose_file(file) if file == COMPOSE_FILE else file
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Callback — запускает интерактивное меню при rdt без аргументов
+# Callback — starts the interactive menu when rdt is run without arguments
 # ─────────────────────────────────────────────────────────────────────────────
 @app.callback(invoke_without_command=True, help=t("app.callback_help"))
 def main(ctx: typer.Context) -> None:
@@ -60,7 +67,7 @@ def main(ctx: typer.Context) -> None:
 
 
 def _run_interactive(ctx: typer.Context) -> None:
-    """Запустить главное интерактивное меню."""
+    """Start the main interactive menu."""
     while True:
         action = run_main_menu()
 
@@ -105,7 +112,7 @@ def _run_interactive(ctx: typer.Context) -> None:
 
         elif action == "lang":
             _change_language()
-            continue  # Меню сразу перерисуется с новым языком
+            continue  # The menu is redrawn immediately with the new language.
 
         console.print()
         cont = questionary.confirm(t("msg.do_more"), default=False).ask()
@@ -114,12 +121,12 @@ def _run_interactive(ctx: typer.Context) -> None:
 
 
 def _show_help(ctx: typer.Context) -> None:
-    """Вывести полную справку по командам RDT (аналог rdt --help)."""
+    """Print the full RDT command help, equivalent to rdt --help."""
     console.print(ctx.get_help())
 
 
 def _change_language() -> None:
-    """Интерактивная смена языка прямо внутри сессии."""
+    """Interactively change the language inside the current session."""
     langs = i18n.available_langs()
     current = i18n.current_lang()
     choices = [
@@ -144,6 +151,7 @@ def init(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.init.opt_file"))] = COMPOSE_FILE,
     force: Annotated[bool, typer.Option("--force", help=t("cmd.init.opt_force"))] = False,
 ) -> None:
+    file = _resolve_cli_compose_file(file)
     try:
         result = core_init(file, force=force)
     except RdtError as e:
@@ -176,6 +184,7 @@ def add(
     hc_start_period: Annotated[Optional[str], typer.Option("--hc-start-period", help=t("cmd.add.opt_hc_start_period"))] = None,
     set_params: Annotated[Optional[list[str]], typer.Option("--set", help=t("cmd.add.opt_set"))] = None,
 ) -> None:
+    file = _resolve_cli_compose_file(file)
     service = service.lower()
     preset = ALL_PRESETS.get(service)
     if preset is None:
@@ -183,7 +192,7 @@ def add(
         console.print(t("msg.use_rdt_list"))
         raise typer.Exit(1)
 
-    # Парсинг --set key=value
+    # Parse --set key=value.
     set_overrides: dict[str, str] = {}
     for param in (set_params or []):
         if "=" not in param:
@@ -219,7 +228,7 @@ def add(
                 set_vars=set_overrides or None,
             )
         else:
-            # Wizard mode — интерактивный режим остаётся в CLI
+            # Wizard mode remains interactive in the CLI.
             if file.exists():
                 data = load_compose(file)
                 existing = get_existing_services(data)
@@ -293,6 +302,7 @@ def up(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.up.opt_file"))] = COMPOSE_FILE,
     detach: Annotated[bool, typer.Option("--detach/--no-detach", "-d", help=t("cmd.up.opt_detach"))] = True,
 ) -> None:
+    file = _resolve_cli_compose_file(file)
     try:
         result = core_up(file, detach=detach)
     except RdtError as e:
@@ -310,6 +320,7 @@ def check(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.check.opt_file"))] = COMPOSE_FILE,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help=t("cmd.check.opt_verbose"))] = False,
 ) -> None:
+    file = _resolve_cli_compose_file(file)
     console.print(t("msg.check_running", file=file))
     try:
         result = core_check(file)
@@ -338,6 +349,7 @@ def remove(
     clean_env: Annotated[bool, typer.Option("--clean-env", help=t("cmd.remove.opt_clean_env"))] = False,
     clean_artifacts: Annotated[bool, typer.Option("--clean-artifacts", help=t("cmd.remove.opt_clean_artifacts"))] = False,
 ) -> None:
+    file = _resolve_cli_compose_file(file)
     if not file.exists():
         console.print(t("remove.compose_not_found", file=file))
         raise typer.Exit(1)
@@ -349,7 +361,7 @@ def remove(
         console.print(t("remove.no_services", file=file))
         raise typer.Exit(1)
 
-    # ── Выбор сервиса (interactive или аргумент) ─────────────────────────────
+    # ── Service selection (interactive or argument) ──────────────────────────
     if service is None:
         from rdt.wizard import ask_remove_service_choice
         service = ask_remove_service_choice(existing)
@@ -366,7 +378,7 @@ def remove(
 
     console.print(t("remove.header", service=service))
 
-    # ── Интерактивные вопросы по опциям (если не --yes) ─────────────────────
+    # ── Interactive option questions when --yes is not provided ──────────────
     if not yes:
         from rdt.env_manager import find_orphaned_vars
         from rdt.core import _get_artifact_paths
@@ -385,7 +397,7 @@ def remove(
             console.print(t("remove.cancelled"))
             raise typer.Exit(0)
 
-    # ── Применение (делегируем в core) ───────────────────────────────────────
+    # ── Apply through core ───────────────────────────────────────────────────
     try:
         result = core_remove(service, file, clean_env=clean_env, clean_artifacts=clean_artifacts)
     except RdtError as e:
@@ -441,6 +453,7 @@ _CHECK_LABEL_KEYS = {
 def doctor(
     file: Annotated[Path, typer.Option("--file", "-f", help=t("cmd.doctor.opt_file"))] = COMPOSE_FILE,
 ) -> None:
+    file = _resolve_cli_compose_file(file)
     console.print(t("doctor.header"))
 
     try:
@@ -493,7 +506,7 @@ def lang_cmd(
     action: Annotated[Optional[str], typer.Argument(help=t("cmd.lang.arg_action"))] = None,
     value: Annotated[Optional[str], typer.Argument(help=t("cmd.lang.arg_value"))] = None,
 ) -> None:
-    # Без аргументов — интерактивный выбор языка
+    # No arguments: choose the language interactively.
     if action is None:
         _change_language()
         return
@@ -518,7 +531,7 @@ def lang_cmd(
             raise typer.Exit(1)
         return
 
-    # Неизвестное действие
+    # Unknown action.
     console.print(t("lang.unknown", lang=action))
     raise typer.Exit(1)
 

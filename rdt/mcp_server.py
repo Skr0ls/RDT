@@ -1,17 +1,17 @@
 """
-RDT MCP Server — Model Context Protocol сервер для Rambo Docker Tools.
+RDT MCP Server — Model Context Protocol server for Rambo Docker Tools.
 
-Транспорт: stdio (стандартный для MCP).
-Запуск: rdt-mcp  (entry point определён в pyproject.toml)
+Transport: stdio (the standard MCP transport).
+Run with: rdt-mcp (entry point defined in pyproject.toml).
 
-Инструменты:
-  rdt_init    — инициализировать docker-compose.yml + .env
-  rdt_add     — добавить сервис в стек
-  rdt_remove  — удалить сервис из стека
-  rdt_list    — список доступных пресетов
-  rdt_doctor  — полная диагностика проекта
-  rdt_check   — валидация YAML через docker compose config
-  rdt_up      — запустить docker compose up
+Tools:
+  rdt_init    — initialize docker-compose.yml + .env
+  rdt_add     — add a service to the stack
+  rdt_remove  — remove a service from the stack
+  rdt_list    — list available presets
+  rdt_doctor  — run full project diagnostics
+  rdt_check   — validate YAML via docker compose config
+  rdt_up      — run docker compose up
 """
 from __future__ import annotations
 
@@ -31,35 +31,37 @@ from rdt.core import (
     remove,
     up,
 )
+from rdt.yaml_manager import DEFAULT_COMPOSE_FILE, resolve_default_compose_file
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Экземпляр сервера
+# Server instance
 # ─────────────────────────────────────────────────────────────────────────────
 
 mcp = FastMCP(
     "rdt",
     instructions=(
-        "RDT (Rambo Docker Tools) — генератор production-ready docker-compose стеков. "
-        "Используй rdt_list чтобы узнать доступные сервисы, rdt_init для инициализации проекта, "
-        "rdt_add для добавления сервисов, rdt_doctor для диагностики перед запуском. "
-        "Все инструменты принимают параметр project_dir (абсолютный путь к рабочей директории). "
-        "Если project_dir не задан — используется текущая рабочая директория."
+        "RDT (Rambo Docker Tools) generates production-ready docker-compose stacks. "
+        "Use rdt_list to inspect available services, rdt_init to initialize a project, "
+        "rdt_add to add services, and rdt_doctor to diagnose the stack before startup. "
+        "All tools accept project_dir, an absolute path to the working directory. "
+        "If project_dir is omitted, the current working directory is used."
     ),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Вспомогательная функция
+# Helper function
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _resolve_file(project_dir: str | None, file: str) -> Path:
-    """Разрешить путь к compose-файлу с учётом project_dir."""
+    """Resolve a compose-file path relative to project_dir when provided."""
     base = Path(project_dir) if project_dir else Path.cwd()
     p = Path(file)
-    return base / p if not p.is_absolute() else p
+    resolved = base / p if not p.is_absolute() else p
+    return resolve_default_compose_file(resolved) if file == DEFAULT_COMPOSE_FILE else resolved
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Инструменты
+# Tools
 # ─────────────────────────────────────────────────────────────────────────────
 
 @mcp.tool()

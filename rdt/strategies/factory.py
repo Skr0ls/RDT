@@ -1,5 +1,5 @@
 """
-Фабрика стратегий — возвращает нужную стратегию по пресету.
+Strategy factory — returns the strategy required by a preset.
 """
 from __future__ import annotations
 from typing import Any
@@ -14,7 +14,7 @@ from rdt.strategies.traefik import TraefikStrategy
 
 
 class _FallbackStrategy(BaseStrategy):
-    """Используется когда нет специфичной стратегии."""
+    """Used when no specific strategy exists."""
     def _enrich(self, service: dict) -> None:
         pass
 

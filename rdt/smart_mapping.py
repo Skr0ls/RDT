@@ -1,13 +1,13 @@
 """
-Smart Mapping — автоматическое предложение связей между сервисами.
+Smart Mapping — automatic suggestions for links between services.
 """
 from __future__ import annotations
 from typing import Any
 
 from rdt.strategies.base import CONTAINER_PREFIX
 
-# Описание умных связок: {service_name: handler_func}
-# handler получает (existing_services: list[str], answers: dict) → обновляет answers["smart_env"]
+# Smart-link definitions: {service_name: handler_func}.
+# A handler receives (existing_services: list[str], answers: dict) and updates answers["smart_env"].
 
 
 def apply_smart_mapping(
@@ -16,8 +16,8 @@ def apply_smart_mapping(
     answers: dict[str, Any],
 ) -> dict[str, Any]:
     """
-    Применяет Smart Mapping для service_name.
-    Возвращает обновлённый словарь answers.
+    Apply Smart Mapping for service_name.
+    Return the updated answers dictionary.
     """
     handlers = {
         "pgadmin": _pgadmin_mapping,
@@ -36,7 +36,7 @@ def apply_smart_mapping(
 
 
 def _pgadmin_mapping(existing: list[str], answers: dict) -> None:
-    """pgAdmin → Postgres: заполнить сервер БД."""
+    """pgAdmin → Postgres: fill in the database server."""
     pg_services = [s for s in existing if "postgres" in s]
     if pg_services:
         selected = answers.get("parent_service", pg_services[0])
@@ -120,7 +120,7 @@ def _logstash_mapping(existing: list[str], answers: dict) -> None:
             deps.append(selected)
         answers["depends_on"] = deps
         answers["parent_service"] = selected
-        # Подсказать дефолтный режим pipeline (но не переопределять если уже задан)
+        # Suggest the default pipeline mode without overriding an existing value.
         answers.setdefault("logstash_pipeline", "beats-es")
         answers.setdefault("logstash_es_host", f"{selected}:9200")
 
@@ -191,7 +191,7 @@ def _kibana_mapping(existing: list[str], answers: dict) -> None:
 
 
 def get_candidate_parents(service_name: str, existing_services: list[str]) -> list[str]:
-    """Вернуть список кандидатов-родителей для smart mapping."""
+    """Return the list of candidate parent services for smart mapping."""
     filters = {
         "pgadmin": lambda s: "postgres" in s,
         "kafka-ui": lambda s: "kafka" in s and "ui" not in s,

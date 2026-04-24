@@ -1,12 +1,12 @@
 """
-TraefikStrategy — стратегия для Traefik reverse proxy.
+TraefikStrategy — strategy for the Traefik reverse proxy.
 
-Особенности:
-- Монтирует /var/run/docker.sock (read-only) для auto-discovery
-- Монтирует конфиг-файл traefik.yml из локальной папки
-- Поддерживает несколько портов: HTTP (80), HTTPS (443), Dashboard (8080)
-- Опциональный Let's Encrypt с хранением сертификатов в ./traefik/certs
-- Healthcheck через ping-эндпоинт на порту API (8080)
+Features:
+- mounts /var/run/docker.sock read-only for auto-discovery
+- mounts traefik.yml from a local directory
+- supports multiple ports: HTTP (80), HTTPS (443), Dashboard (8080)
+- optional Let's Encrypt with certificates stored under ./traefik/certs
+- healthcheck uses the ping endpoint on the API port (8080)
 """
 from __future__ import annotations
 
@@ -18,31 +18,31 @@ from rdt.strategies.base import BaseStrategy
 # Defaults
 # ---------------------------------------------------------------------------
 
-#: Дефолтная директория для конфига Traefik (относительно cwd)
+#: Default Traefik config directory relative to cwd.
 DEFAULT_TRAEFIK_CONFIG_DIR = "./traefik"
 
-#: Порт Dashboard по умолчанию
+#: Default Dashboard port.
 DEFAULT_DASHBOARD_PORT = 8080
 
-#: Порт HTTPS по умолчанию
+#: Default HTTPS port.
 DEFAULT_HTTPS_PORT = 443
 
 
 class TraefikStrategy(BaseStrategy):
     """
-    Стратегия для Traefik reverse proxy.
+    Strategy for the Traefik reverse proxy.
 
-    Отличия от BaseStrategy:
-    - Перезаписывает ports: добавляет HTTPS и Dashboard
-    - Использует bind-mounts (Docker socket + конфиг)
-    - Добавляет healthcheck через /ping API-эндпоинт
+    Differences from BaseStrategy:
+    - overrides ports by adding HTTPS and Dashboard
+    - uses bind mounts (Docker socket + config)
+    - adds a healthcheck through the /ping API endpoint
     """
 
     def _enrich(self, service: dict[str, Any]) -> None:
         net_type = self.answers.get("network_type", "bridge")
         expose_ports = self.answers.get("expose_ports", True)
 
-        # --- Порты ---
+        # --- Ports ---
         if net_type not in ("host", "none") and expose_ports:
             http_port = self.answers.get("port", self.preset.default_port)
             dashboard_enabled = self.answers.get("traefik_dashboard", True)
@@ -72,7 +72,7 @@ class TraefikStrategy(BaseStrategy):
 
         service["volumes"] = volumes
 
-        # --- Healthcheck через ping ---
+        # --- Healthcheck through ping ---
         service["healthcheck"] = {
             "test": ["CMD-SHELL", "wget -qO- http://localhost:8080/ping || exit 1"],
             "interval": "10s",

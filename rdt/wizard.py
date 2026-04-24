@@ -1,5 +1,5 @@
 """
-Интерактивный мастер добавления сервиса (Wizard Mode).
+Interactive service-addition wizard (Wizard Mode).
 """
 from __future__ import annotations
 from typing import Any, Callable
@@ -36,15 +36,15 @@ def run_wizard(
     services_with_healthcheck: set[str] | None = None,
 ) -> dict[str, Any]:
     """
-    Запустить интерактивный мастер для выбранного пресета.
-    Возвращает словарь answers для передачи в стратегию.
+    Run the interactive wizard for the selected preset.
+    Return an answers dictionary to pass into a strategy.
     """
     answers: dict[str, Any] = {}
     _svc_with_hc = services_with_healthcheck or set()
 
     console.print(t("wizard.configuring", name=preset.display_name))
 
-    # ── 1. Порт ──────────────────────────────────────────────────────────────
+    # ── 1. Port ──────────────────────────────────────────────────────────────
     answers["port"] = _ask_port(preset)
 
     # ── 2. Container name ────────────────────────────────────────────────────
@@ -60,22 +60,22 @@ def run_wizard(
     else:
         answers["use_default_creds"] = not hardcore
 
-    # ── 4. Volumes (только для БД) ────────────────────────────────────────────
+    # ── 4. Volumes (database services only) ──────────────────────────────────
     if preset.volumes and _needs_volume(preset):
         answers["volume_source"] = _ask_volume(preset)
 
-    # ── 5. Сеть ──────────────────────────────────────────────────────────────
+    # ── 5. Network ───────────────────────────────────────────────────────────
     net_type, net_name = _ask_network()
     answers["network_type"] = net_type
     answers["network_name"] = net_name
 
-    # ── 6. Прокидывание портов (не для host/none) ─────────────────────────────
+    # ── 6. Port publishing (not for host/none) ───────────────────────────────
     if net_type not in ("host", "none"):
         answers["expose_ports"] = _ask_expose_ports()
     else:
         answers["expose_ports"] = False
 
-    # ── 7. Healthcheck параметры ──────────────────────────────────────────────
+    # ── 7. Healthcheck parameters ────────────────────────────────────────────
     if preset.healthcheck:
         answers["healthcheck_params"] = _ask_healthcheck_params(preset)
 
@@ -90,7 +90,7 @@ def run_wizard(
     if candidates:
         answers = _ask_smart_mapping(preset.name, candidates, existing_services, answers)
 
-    # ── 10. Service-specific inputs (например, для nginx) ────────────────────
+    # ── 10. Service-specific inputs, for example nginx ──────────────────────
     extra_fn = _SERVICE_EXTRA_WIZARDS.get(preset.name)
     if extra_fn:
         answers = extra_fn(answers)
@@ -262,7 +262,7 @@ def _ask_smart_mapping(
     existing_services: list[str],
     answers: dict[str, Any],
 ) -> dict[str, Any]:
-    """Предложить выбрать родительский сервис для smart-mapping."""
+    """Offer parent service selection for smart mapping."""
     labels = {
         "pgadmin": "Postgres",
         "kafka-ui": "Kafka",
@@ -303,7 +303,7 @@ def _ask_smart_mapping(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _ask_nginx_proxy_inputs(answers: dict[str, Any]) -> dict[str, Any]:
-    """Дополнительные вопросы для nginx-proxy."""
+    """Ask additional questions for nginx-proxy."""
     console.print(t("wizard.nginx_specific_header"))
 
     upstream = questionary.text(
@@ -328,7 +328,7 @@ def _ask_nginx_proxy_inputs(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ask_nginx_html_inputs(answers: dict[str, Any]) -> dict[str, Any]:
-    """Дополнительные вопросы для nginx-static и nginx-spa."""
+    """Ask additional questions for nginx-static and nginx-spa."""
     console.print(t("wizard.nginx_specific_header"))
 
     server_name = questionary.text(
@@ -353,7 +353,7 @@ def _ask_nginx_html_inputs(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ask_apache_static_inputs(answers: dict[str, Any]) -> dict[str, Any]:
-    """Дополнительные вопросы для apache-static."""
+    """Ask additional questions for apache-static."""
     console.print(t("wizard.apache_specific_header"))
 
     server_name = questionary.text(
@@ -378,7 +378,7 @@ def _ask_apache_static_inputs(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ask_apache_php_inputs(answers: dict[str, Any]) -> dict[str, Any]:
-    """Дополнительные вопросы для apache-php."""
+    """Ask additional questions for apache-php."""
     console.print(t("wizard.apache_specific_header"))
 
     server_name = questionary.text(
@@ -403,10 +403,10 @@ def _ask_apache_php_inputs(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ask_logstash_inputs(answers: dict[str, Any]) -> dict[str, Any]:
-    """Дополнительные вопросы для Logstash: режим pipeline."""
+    """Ask additional questions for Logstash: pipeline mode."""
     console.print(t("wizard.logstash_specific_header"))
 
-    # Если smart mapping уже задал режим — предложить его как default
+    # If smart mapping already set the mode, offer it as the default.
     current_mode = answers.get("logstash_pipeline", "beats-stdout")
 
     mode = questionary.select(
@@ -430,7 +430,7 @@ def _ask_logstash_inputs(answers: dict[str, Any]) -> dict[str, Any]:
         ).ask()
         answers["logstash_es_host"] = (es_host or default_host).strip()
 
-    # Установить condition-флаги
+    # Set condition flags.
     answers["logstash_pipeline_stdout"] = (answers["logstash_pipeline"] == "beats-stdout")
     answers["logstash_pipeline_es"] = (answers["logstash_pipeline"] == "beats-es")
 
@@ -438,10 +438,10 @@ def _ask_logstash_inputs(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ask_filebeat_inputs(answers: dict[str, Any]) -> dict[str, Any]:
-    """Дополнительные вопросы для Filebeat: output mode, log path, optional Kibana host."""
+    """Ask additional questions for Filebeat: output mode, log path, optional Kibana host."""
     console.print(t("wizard.filebeat_specific_header"))
 
-    # Output mode — если smart mapping уже выбрал режим, предлагаем его как default
+    # Output mode: if smart mapping already selected a mode, offer it as the default.
     current_output = answers.get("filebeat_output", "stdout")
 
     output = questionary.select(
@@ -501,7 +501,7 @@ def _ask_filebeat_inputs(answers: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ask_traefik_inputs(answers: dict[str, Any]) -> dict[str, Any]:
-    """Дополнительные вопросы для Traefik."""
+    """Ask additional questions for Traefik."""
     console.print(t("wizard.traefik_specific_header"))
 
     # Dashboard
@@ -572,8 +572,8 @@ def _ask_traefik_inputs(answers: dict[str, Any]) -> dict[str, Any]:
     return answers
 
 
-#: Маппинг service_name → callable для service-specific wizard вопросов.
-#: Расширяйте этот словарь при добавлении новых сервисов с конфигами.
+#: Mapping from service_name to callable for service-specific wizard questions.
+#: Extend this dictionary when adding new services with configs.
 _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "nginx-proxy":   _ask_nginx_proxy_inputs,
     "nginx-static":  _ask_nginx_html_inputs,
@@ -587,13 +587,13 @@ _SERVICE_EXTRA_WIZARDS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Главное интерактивное меню (запускается при rdt без аргументов)
+# Main interactive menu, started when rdt is run without arguments
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_main_menu() -> str:
     """
-    Показать главное интерактивное меню.
-    Возвращает строку-ключ выбранного действия.
+    Show the main interactive menu.
+    Return the selected action key.
     """
     console.print()
     console.print(Panel.fit(
@@ -626,8 +626,8 @@ def run_main_menu() -> str:
 
 def ask_service_choice() -> str | None:
     """
-    Показать каталог сервисов по категориям и вернуть выбранное имя сервиса
-    (или None если пользователь выбрал «Назад»).
+    Show the service catalog by category and return the selected service name,
+    or None when the user chooses Back.
     """
     from rdt.presets.catalog import ALL_PRESETS
 
@@ -657,8 +657,8 @@ def ask_service_choice() -> str | None:
 
 def ask_remove_service_choice(existing_services: list[str]) -> str | None:
     """
-    Показать список существующих сервисов и вернуть выбранный для удаления
-    (или None если пользователь выбрал «Назад»).
+    Show existing services and return the one selected for removal,
+    or None when the user chooses Back.
     """
     choices: list = []
     for svc in existing_services:
@@ -690,12 +690,12 @@ def build_script_answers(
     hc_start_period: str | None = None,
 ) -> dict[str, Any]:
     """
-    Сформировать словарь answers из CLI-флагов без интерактивного мастера.
-    Используется при запуске rdt add <service> --yes [--port X] [--volume Y] ...
+    Build an answers dictionary from CLI flags without the interactive wizard.
+    Used when running rdt add <service> --yes [--port X] [--volume Y] ...
     """
     answers: dict[str, Any] = {}
 
-    # Порт
+    # Port.
     answers["port"] = port if port is not None else preset.default_port
 
     # Container name
@@ -704,11 +704,11 @@ def build_script_answers(
     # Credentials
     answers["use_default_creds"] = not hardcore
 
-    # Volume (только для сервисов с volumes)
+    # Volume (only for services with volumes).
     if preset.volumes:
         answers["volume_source"] = volume if volume is not None else f"{preset.name}_data"
 
-    # Сеть
+    # Network.
     if network is None or network == "bridge":
         answers["network_type"] = "bridge"
         answers["network_name"] = NETWORK_NAME
@@ -719,14 +719,14 @@ def build_script_answers(
         answers["network_type"] = "none"
         answers["network_name"] = ""
     else:
-        # Имя external-сети
+        # External network name.
         answers["network_type"] = "external"
         answers["network_name"] = network
 
-    # Прокидывание портов
+    # Port publishing.
     answers["expose_ports"] = not no_ports
 
-    # Healthcheck параметры
+    # Healthcheck parameters.
     hc_params: dict[str, Any] = {}
     if hc_interval:
         hc_params["interval"] = hc_interval
@@ -738,16 +738,16 @@ def build_script_answers(
         hc_params["start_period"] = hc_start_period
     answers["healthcheck_params"] = hc_params
 
-    # Зависимости
+    # Dependencies.
     answers["depends_on"] = list(depends_on)
 
-    # Auto Smart Mapping — автоматически применяем первого найденного кандидата
+    # Auto Smart Mapping: automatically apply the first found candidate.
     candidates = get_candidate_parents(preset.name, existing_services)
     if candidates:
         answers["parent_service"] = candidates[0]
         answers = apply_smart_mapping(preset.name, existing_services, answers)
 
-    # Service-specific defaults для script mode
+    # Service-specific defaults for script mode.
     _apply_service_script_defaults(preset, answers)
 
     return answers
@@ -755,8 +755,8 @@ def build_script_answers(
 
 def _apply_service_script_defaults(preset: ServicePreset, answers: dict[str, Any]) -> None:
     """
-    Установить service-specific значения по умолчанию для script mode.
-    Вызывается из build_script_answers после всех общих параметров.
+    Set service-specific defaults for script mode.
+    Called from build_script_answers after all common parameters.
     """
     if preset.name == "nginx-proxy":
         answers.setdefault("nginx_upstream", "app:8000")
@@ -779,7 +779,7 @@ def _apply_service_script_defaults(preset: ServicePreset, answers: dict[str, Any
         answers.setdefault("apache_src_dir", DEFAULT_APACHE_SRC_DIR)
 
     elif preset.name == "logstash":
-        # Режим pipeline: если smart mapping нашёл ES — beats-es, иначе beats-stdout
+        # Pipeline mode: beats-es when smart mapping found ES, otherwise beats-stdout.
         pipeline = answers.get("logstash_pipeline", "beats-stdout")
         answers["logstash_pipeline"] = pipeline
         answers["logstash_pipeline_stdout"] = (pipeline == "beats-stdout")
@@ -791,7 +791,7 @@ def _apply_service_script_defaults(preset: ServicePreset, answers: dict[str, Any
             )
 
     elif preset.name == "filebeat":
-        # Output mode: если smart mapping нашёл Logstash — logstash, нашёл ES — elasticsearch, иначе stdout
+        # Output mode: logstash when found, otherwise elasticsearch when ES is found, otherwise stdout.
         output = answers.get("filebeat_output", "stdout")
         answers["filebeat_output"] = output
         answers["filebeat_output_logstash"] = (output == "logstash")

@@ -1,6 +1,6 @@
 """
-Каталог всех доступных пресетов сервисов.
-Каждый пресет описывает конфигурацию docker-compose сервиса по умолчанию.
+Catalog of all available service presets.
+Each preset describes the default docker-compose configuration for a service.
 """
 from __future__ import annotations
 
@@ -21,21 +21,21 @@ CATEGORY_ADMIN = "Admin Tools"
 
 @dataclass
 class ServicePreset:
-    name: str                          # ключ сервиса (postgres, redis …)
-    display_name: str                  # красивое имя для UI
-    category: str                      # категория из констант выше
+    name: str                          # service key (postgres, redis, etc.)
+    display_name: str                  # display name for the UI
+    category: str                      # category from the constants above
     image: str                         # docker image
-    default_port: int                  # стандартный внешний порт
-    container_port: int                # внутренний порт контейнера
+    default_port: int                  # default external port
+    container_port: int                # internal container port
     default_env: dict = field(default_factory=dict)
-    volumes: list[str] = field(default_factory=list)   # шаблоны volume-маппингов
+    volumes: list[str] = field(default_factory=list)   # volume mapping templates
     healthcheck: Optional[dict] = None
-    deploy_limits: Optional[dict] = None               # CPU / RAM лимиты
+    deploy_limits: Optional[dict] = None               # CPU / RAM limits
     strategy: str = "base"            # base | database | admin_tool | monitoring | web_server
-    depends_on_category: Optional[str] = None          # для Smart Mapping
-    artifacts: list[ArtifactDef] = field(default_factory=list)  # companion-файлы сервиса
-    scaffolds: list[DirectoryDef] = field(default_factory=list)  # директории для scaffolding
-    bootstrap_hints: list[BootstrapHint] = field(default_factory=list)  # подсказки после установки
+    depends_on_category: Optional[str] = None          # for Smart Mapping
+    artifacts: list[ArtifactDef] = field(default_factory=list)  # service companion files
+    scaffolds: list[DirectoryDef] = field(default_factory=list)  # directories for scaffolding
+    bootstrap_hints: list[BootstrapHint] = field(default_factory=list)  # post-install hints
 
 
 # ---------------------------------------------------------------------------
@@ -343,11 +343,11 @@ LOGSTASH = ServicePreset(
     ],
     bootstrap_hints=[
         BootstrapHint(
-            message="Настройте Filebeat/Beats-агент для отправки данных на порт 5044 этого хоста.",
+            message="Configure the Filebeat/Beats agent to send data to port 5044 on this host.",
             command="docker exec -it logstash curl -s http://localhost:9600/_node/stats | python -m json.tool",
         ),
         BootstrapHint(
-            message="Проверьте статус Logstash: убедитесь что pipeline активен и нет ошибок.",
+            message="Check Logstash status and make sure the pipeline is active with no errors.",
         ),
     ],
 )
@@ -683,7 +683,7 @@ NGINX_PROXY = ServicePreset(
     container_port=80,
     default_env={},
     volumes=[],
-    healthcheck=None,          # healthcheck задаётся в WebServerStrategy
+    healthcheck=None,          # healthcheck is set by WebServerStrategy
     deploy_limits={"cpus": "0.5", "memory": "128M"},
     strategy="web_server",
     artifacts=[
@@ -746,7 +746,7 @@ APACHE_STATIC = ServicePreset(
     container_port=80,
     default_env={},
     volumes=[],
-    healthcheck=None,          # healthcheck задаётся в WebServerStrategy
+    healthcheck=None,          # healthcheck is set by WebServerStrategy
     deploy_limits={"cpus": "0.5", "memory": "128M"},
     strategy="web_server",
     artifacts=[
@@ -812,8 +812,8 @@ TRAEFIK = ServicePreset(
     default_port=80,
     container_port=80,
     default_env={},
-    volumes=[],                 # volumes управляются TraefikStrategy
-    healthcheck=None,           # healthcheck задаётся в TraefikStrategy
+    volumes=[],                 # volumes are managed by TraefikStrategy
+    healthcheck=None,           # healthcheck is set by TraefikStrategy
     deploy_limits={"cpus": "0.5", "memory": "128M"},
     strategy="traefik",
     artifacts=[
@@ -829,24 +829,24 @@ TRAEFIK = ServicePreset(
     ],
     bootstrap_hints=[
         BootstrapHint(
-            message="Traefik Dashboard доступен на http://localhost:8080/dashboard/ "
-                    "(по умолчанию insecure-режим). В production отключите insecure и настройте аутентификацию.",
+            message="The Traefik Dashboard is available at http://localhost:8080/dashboard/ "
+                    "(insecure mode by default). Disable insecure mode and configure authentication in production.",
         ),
         BootstrapHint(
-            message="Чтобы Traefik обнаруживал ваши сервисы, добавьте к ним labels:\n"
+            message="To let Traefik discover your services, add these labels:\n"
                     "  traefik.enable=true\n"
                     "  traefik.http.routers.<name>.rule=Host(`your.domain`)\n"
                     "  traefik.http.services.<name>.loadbalancer.server.port=<port>",
         ),
         BootstrapHint(
-            message="Просмотр активных маршрутов и middleware:",
+            message="View active routes and middleware:",
             command="docker exec -it traefik wget -qO- http://localhost:8080/api/http/routers | python -m json.tool",
         ),
     ],
 )
 
 # ---------------------------------------------------------------------------
-# Реестр всех пресетов
+# Registry of all presets
 # ---------------------------------------------------------------------------
 ALL_PRESETS: dict[str, ServicePreset] = {
     p.name: p for p in [

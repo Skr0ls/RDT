@@ -1,8 +1,8 @@
 """
-Подсистема companion-артефактов RDT.
+RDT companion artifact subsystem.
 
-Позволяет сервисам генерировать дополнительные файлы конфигурации
-(nginx.conf, logstash.conf, prometheus.yml и т.д.) вместе с compose-блоком.
+Allows services to generate additional configuration files
+(nginx.conf, logstash.conf, prometheus.yml, etc.) together with the compose block.
 """
 from __future__ import annotations
 
@@ -17,72 +17,72 @@ from rdt.i18n import t
 
 
 # ---------------------------------------------------------------------------
-# Политика перезаписи
+# Overwrite policy
 # ---------------------------------------------------------------------------
 
 class OverwritePolicy(str, Enum):
-    SKIP = "skip"                       # не перезаписывать если файл уже существует
-    OVERWRITE = "overwrite"             # всегда перезаписывать
-    ERROR_IF_EXISTS = "error_if_exists" # вернуть ошибку если файл уже существует
+    SKIP = "skip"                       # Do not overwrite when the file already exists.
+    OVERWRITE = "overwrite"             # Always overwrite.
+    ERROR_IF_EXISTS = "error_if_exists" # Return an error when the file already exists.
 
 
 # ---------------------------------------------------------------------------
-# Тип источника артефакта
+# Artifact source type
 # ---------------------------------------------------------------------------
 
 class ArtifactSourceType(str, Enum):
-    TEMPLATE = "template"  # Jinja2-шаблон из templates/artifacts/
-    STATIC = "static"      # Статический текст, встроенный в ArtifactDef
-    PYTHON = "python"      # Python-рендерер: (context: ArtifactContext) -> str
+    TEMPLATE = "template"  # Jinja2 template from templates/artifacts/.
+    STATIC = "static"      # Static text embedded in ArtifactDef.
+    PYTHON = "python"      # Python renderer: (context: ArtifactContext) -> str.
 
 
 # ---------------------------------------------------------------------------
-# Богатый контекст генерации артефактов
+# Rich artifact-generation context
 # ---------------------------------------------------------------------------
 
 @dataclass
 class ArtifactContext:
     """
-    Полный контекст для генерации companion-артефактов сервиса.
+    Full context for generating service companion artifacts.
 
-    Передаётся в ArtifactPipeline вместо сырого dict answers.
-    Доступен в Jinja2-шаблонах и Python-рендерерах.
+    Passed to ArtifactPipeline instead of a raw answers dict.
+    Available in Jinja2 templates and Python renderers.
     """
 
     service_name: str
-    """Имя сервиса (ключ в docker-compose, например 'nginx-proxy')."""
+    """Service name (docker-compose key, for example 'nginx-proxy')."""
 
     answers: dict[str, Any]
-    """Ответы мастера или скрипт-режима."""
+    """Wizard or script-mode answers."""
 
     env_values: dict[str, str]
-    """Значения переменных окружения, записываемых в .env."""
+    """Environment variable values written to .env."""
 
     project_root: Path
-    """Корень проекта — от него строятся все пути артефактов."""
+    """Project root used as the base for all artifact paths."""
 
     compose_file: Path
-    """Абсолютный путь к docker-compose.yml."""
+    """Absolute path to docker-compose.yml."""
 
     preset: Any = None
-    """ServicePreset (Any — чтобы избежать circular import из presets/catalog.py)."""
+    """ServicePreset (Any avoids a circular import from presets/catalog.py)."""
 
     smart_env: dict[str, Any] = field(default_factory=dict)
-    """Переменные окружения, установленные Smart Mapping (подмножество answers['smart_env'])."""
+    """Environment variables set by Smart Mapping (subset of answers['smart_env'])."""
 
     depends_on: list[str] = field(default_factory=list)
-    """Зависимости сервиса, установленные Smart Mapping (подмножество answers['depends_on'])."""
+    """Service dependencies set by Smart Mapping (subset of answers['depends_on'])."""
 
     parent_service: str | None = None
-    """Имя родительского сервиса, если Smart Mapping обнаружил связанный сервис."""
+    """Parent service name when Smart Mapping finds a related service."""
 
     service_def: dict[str, Any] | None = None
-    """Готовый словарь блока сервиса (результат strategy.build())."""
+    """Built service-block dictionary (result of strategy.build())."""
 
     def as_template_vars(self) -> dict[str, Any]:
         """
-        Возвращает все переменные для Jinja2-рендера.
-        Включает answers + служебные поля контекста.
+        Return all variables for Jinja2 rendering.
+        Includes answers plus service context fields.
         """
         base: dict[str, Any] = {**self.answers}
         base["service_name"] = self.service_name
@@ -101,56 +101,56 @@ class ArtifactContext:
 
 
 # ---------------------------------------------------------------------------
-# Модель описания артефакта
+# Artifact definition model
 # ---------------------------------------------------------------------------
 
 @dataclass
 class ArtifactDef:
-    """Описание companion-файла, генерируемого вместе с сервисом."""
+    """Definition of a companion file generated together with a service."""
 
     relative_path: str
-    """Куда записать файл относительно project_root (например: 'nginx/nginx.conf')."""
+    """Where to write the file relative to project_root (for example: 'nginx/nginx.conf')."""
 
     source_template: str | None = None
-    """Путь к Jinja2-шаблону относительно rdt/templates/artifacts/. Используется при source_type=TEMPLATE."""
+    """Path to a Jinja2 template under rdt/templates/artifacts/. Used when source_type=TEMPLATE."""
 
     source_type: ArtifactSourceType = ArtifactSourceType.TEMPLATE
-    """Тип источника содержимого файла."""
+    """File content source type."""
 
     static_content: str | None = None
-    """Готовый текст файла. Используется при source_type=STATIC."""
+    """Ready-to-write file content. Used when source_type=STATIC."""
 
     renderer: Callable[[ArtifactContext], str] | None = None
-    """Python-рендерер. Используется при source_type=PYTHON."""
+    """Python renderer. Used when source_type=PYTHON."""
 
     overwrite: OverwritePolicy = OverwritePolicy.SKIP
-    """Политика поведения при существующем файле."""
+    """Behavior policy for existing files."""
 
     condition: str | None = None
-    """Ключ в answers — генерировать только если answers[condition] truthy."""
+    """answers key; generate only when answers[condition] is truthy."""
 
     extra_vars: dict[str, Any] = field(default_factory=dict)
-    """Дополнительные переменные для шаблона (поверх context.as_template_vars())."""
+    """Additional template variables layered over context.as_template_vars()."""
 
 
 # ---------------------------------------------------------------------------
-# Результат preflight-проверки
+# Preflight check result
 # ---------------------------------------------------------------------------
 
 @dataclass
 class PreflightIssue:
-    """Одна проблема, найденная при preflight-проверке."""
+    """One issue found during preflight checks."""
     artifact_path: str
     reason: str
 
 
 # ---------------------------------------------------------------------------
-# Результат генерации
+# Generation result
 # ---------------------------------------------------------------------------
 
 @dataclass
 class ArtifactResult:
-    """Результат генерации одного артефакта."""
+    """Generation result for one artifact."""
 
     path: Path
     status: str  # "created" | "skipped" | "overwritten" | "error"
@@ -162,12 +162,12 @@ class ArtifactResult:
 
 
 # ---------------------------------------------------------------------------
-# Запланированное действие (plan → apply)
+# Planned action (plan → apply)
 # ---------------------------------------------------------------------------
 
 @dataclass
 class ArtifactPlan:
-    """Запланированное действие для одного артефакта (до фактической записи)."""
+    """Planned action for one artifact before writing anything."""
 
     artifact: ArtifactDef
     target: Path
@@ -176,21 +176,21 @@ class ArtifactPlan:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline генерации артефактов
+# Artifact generation pipeline
 # ---------------------------------------------------------------------------
 
 class ArtifactPipeline:
     """
-    Pipeline генерации companion-файлов сервиса.
+    Pipeline for generating service companion files.
 
-    Архитектура plan → apply:
-    1. preflight() — проверить шаблоны, пути и политики до записи
-    2. plan()      — построить список запланированных действий без записи
-    3. apply()     — выполнить план: рендер + запись файлов
-    4. run()       — ярлык: plan() → apply()
+    plan → apply architecture:
+    1. preflight() — check templates, paths, and policies before writing
+    2. plan()      — build a list of planned actions without writing
+    3. apply()     — execute the plan: render + write files
+    4. run()       — shortcut for plan() → apply()
     """
 
-    #: Директория с шаблонами артефактов (внутри пакета rdt)
+    #: Directory containing artifact templates inside the rdt package.
     TEMPLATES_DIR: Path = Path(__file__).parent / "templates" / "artifacts"
 
     def __init__(
@@ -203,7 +203,7 @@ class ArtifactPipeline:
 
     @property
     def base_dir(self) -> Path:
-        """Корень проекта из контекста."""
+        """Project root from the context."""
         return self.context.project_root
 
     # ---------------------------------------------------------------------------
@@ -212,18 +212,18 @@ class ArtifactPipeline:
 
     def preflight(self) -> list[PreflightIssue]:
         """
-        Проверить готовность всех активных артефактов к генерации.
-        Возвращает список найденных проблем (пустой — значит всё ок).
+        Check whether all active artifacts are ready to generate.
+        Returns found issues; an empty list means everything is okay.
         """
         issues: list[PreflightIssue] = []
         for artifact in self.artifacts:
-            # Пропустить если условие не выполнено
+            # Skip when the condition is not satisfied.
             if artifact.condition and not self.context.answers.get(artifact.condition):
                 continue
 
             target = self.base_dir / artifact.relative_path
 
-            # 1. Проверить источник содержимого
+            # 1. Check the content source.
             if artifact.source_type == ArtifactSourceType.TEMPLATE:
                 if artifact.source_template is None:
                     issues.append(PreflightIssue(
@@ -248,14 +248,14 @@ class ArtifactPipeline:
                     reason=t("artifacts.preflight.renderer_missing"),
                 ))
 
-            # 2. Проверить политику при существующем файле
+            # 2. Check the existing-file policy.
             if target.exists() and artifact.overwrite == OverwritePolicy.ERROR_IF_EXISTS:
                 issues.append(PreflightIssue(
                     artifact_path=artifact.relative_path,
                     reason=t("artifacts.preflight.file_exists", path=str(target)),
                 ))
 
-            # 3. Проверить доступность родительской директории (если уже существует)
+            # 3. Check parent directory availability when it already exists.
             parent = target.parent
             if parent.exists() and not parent.is_dir():
                 issues.append(PreflightIssue(
@@ -271,8 +271,8 @@ class ArtifactPipeline:
 
     def plan(self) -> list[ArtifactPlan]:
         """
-        Определить что будет сделано с каждым активным артефактом без фактической записи.
-        Возвращает список ArtifactPlan с action: create | overwrite | skip | error.
+        Determine what will happen to each active artifact without writing anything.
+        Returns ArtifactPlan entries with action: create | overwrite | skip | error.
         """
         plans: list[ArtifactPlan] = []
         for artifact in self.artifacts:
@@ -304,7 +304,7 @@ class ArtifactPipeline:
     # ---------------------------------------------------------------------------
 
     def apply(self, plans: list[ArtifactPlan]) -> list[ArtifactResult]:
-        """Выполнить план: рендер + запись для активных артефактов."""
+        """Execute the plan: render and write active artifacts."""
         results: list[ArtifactResult] = []
         for plan in plans:
             if plan.action == "skip":
@@ -330,11 +330,11 @@ class ArtifactPipeline:
         return results
 
     # ---------------------------------------------------------------------------
-    # Run (ярлык: plan → apply)
+    # Run (shortcut: plan → apply)
     # ---------------------------------------------------------------------------
 
     def run(self) -> list[ArtifactResult]:
-        """Запустить pipeline: plan() → apply() → результаты."""
+        """Run the pipeline: plan() → apply() → results."""
         return self.apply(self.plan())
 
     # ---------------------------------------------------------------------------
@@ -342,7 +342,7 @@ class ArtifactPipeline:
     # ---------------------------------------------------------------------------
 
     def _render(self, artifact: ArtifactDef) -> str:
-        """Отрендерить содержимое артефакта в зависимости от source_type."""
+        """Render artifact content according to source_type."""
         if artifact.source_type == ArtifactSourceType.TEMPLATE:
             return self._render_template(artifact)
         elif artifact.source_type == ArtifactSourceType.STATIC:
@@ -357,7 +357,7 @@ class ArtifactPipeline:
             raise ValueError(f"Unknown source_type: {artifact.source_type}")
 
     def _render_template(self, artifact: ArtifactDef) -> str:
-        """Отрендерить Jinja2-шаблон с полным контекстом + extra_vars."""
+        """Render a Jinja2 template with the full context plus extra_vars."""
         env = Environment(
             loader=FileSystemLoader(str(self.TEMPLATES_DIR)),
             autoescape=False,
@@ -368,12 +368,12 @@ class ArtifactPipeline:
         return template.render(**ctx)
 
     # ---------------------------------------------------------------------------
-    # Вывод результатов пользователю
+    # User-facing result output
     # ---------------------------------------------------------------------------
 
     @staticmethod
     def print_results(results: list[ArtifactResult], console: Any) -> None:
-        """Вывести понятный отчёт о сгенерированных артефактах."""
+        """Print a readable report for generated artifacts."""
         if not results:
             return
 
@@ -393,62 +393,61 @@ class ArtifactPipeline:
 
     @staticmethod
     def has_errors(results: list[ArtifactResult]) -> bool:
-        """Вернуть True если хотя бы один артефакт завершился с ошибкой."""
+        """Return True when at least one artifact failed."""
         return any(r.has_error for r in results)
 
 
 # ---------------------------------------------------------------------------
-# P2: Bootstrap Hint — подсказка для пользователя о ручных шагах
+# P2: Bootstrap Hint — user guidance for manual steps
 # ---------------------------------------------------------------------------
 
 @dataclass
 class BootstrapHint:
     """
-    Подсказка о ручных шагах, которые нужно выполнить после добавления сервиса.
+    Hint about manual steps to perform after adding a service.
 
-    Используется для инструкций, которые нельзя автоматизировать
-    (например, запуск команды инициализации внутри контейнера).
-    Намеренно не выполняется автоматически — только отображается пользователю.
+    Used for instructions that cannot be automated, such as running an
+    initialization command inside a container. Intentionally displayed only;
+    RDT does not execute these steps automatically.
     """
 
     message: str
-    """Текст подсказки (что нужно сделать)."""
+    """Hint text describing what should be done."""
 
     command: str | None = None
-    """Опциональная команда для отображения (только справочно, не выполняется RDT)."""
+    """Optional command to display for reference only; RDT does not execute it."""
 
 
 # ---------------------------------------------------------------------------
-# P2: Directory Scaffolding — декларативное создание директорий
+# P2: Directory Scaffolding — declarative directory creation
 # ---------------------------------------------------------------------------
 
 @dataclass
 class DirectoryDef:
     """
-    Описание директории, которую нужно создать при scaffolding.
+    Definition of a directory to create during scaffolding.
 
-    Используется для объявления структуры проекта, которая должна существовать
-    ещё до того, как в неё будут записаны конкретные файлы (артефакты).
-    Например: logstash/pipeline/, logstash/config/.
+    Used to declare project structure that should exist before specific files
+    (artifacts) are written into it. Examples: logstash/pipeline/, logstash/config/.
     """
 
     relative_path: str
-    """Путь к директории относительно project_root."""
+    """Directory path relative to project_root."""
 
 
 @dataclass
 class ScaffoldPlan:
-    """Запланированное действие для одной директории (до создания)."""
+    """Planned action for one directory before creation."""
 
     directory: DirectoryDef
     target: Path
     action: Literal["create", "skip"]
-    """create — директория будет создана; skip — уже существует."""
+    """create means the directory will be created; skip means it already exists."""
 
 
 @dataclass
 class ScaffoldResult:
-    """Результат создания одной директории при scaffolding."""
+    """Result of creating one directory during scaffolding."""
 
     path: Path
     status: str  # "created" | "already_exists" | "error"
@@ -461,12 +460,12 @@ class ScaffoldResult:
 
 class ScaffoldPipeline:
     """
-    Pipeline декларативного создания директорий.
+    Pipeline for declarative directory creation.
 
-    Архитектура plan → apply:
-    1. plan()  — определить какие директории нужно создать (без записи)
-    2. apply() — создать директории по плану
-    3. run()   — ярлык: plan() → apply()
+    plan → apply architecture:
+    1. plan()  — determine which directories to create without writing
+    2. apply() — create directories according to the plan
+    3. run()   — shortcut for plan() → apply()
     """
 
     def __init__(self, directories: list[DirectoryDef], project_root: Path) -> None:
@@ -474,7 +473,7 @@ class ScaffoldPipeline:
         self.project_root = project_root
 
     def plan(self) -> list[ScaffoldPlan]:
-        """Определить действие для каждой директории без фактического создания."""
+        """Determine the action for each directory without creating anything."""
         plans: list[ScaffoldPlan] = []
         for dir_def in self.directories:
             target = self.project_root / dir_def.relative_path
@@ -483,7 +482,7 @@ class ScaffoldPipeline:
         return plans
 
     def apply(self, plans: list[ScaffoldPlan]) -> list[ScaffoldResult]:
-        """Выполнить план: создать директории, вернуть результаты."""
+        """Execute the plan: create directories and return results."""
         results: list[ScaffoldResult] = []
         for plan in plans:
             if plan.action == "skip":
@@ -497,17 +496,17 @@ class ScaffoldPipeline:
         return results
 
     def run(self) -> list[ScaffoldResult]:
-        """Запустить pipeline: plan() → apply() → результаты."""
+        """Run the pipeline: plan() → apply() → results."""
         return self.apply(self.plan())
 
     @staticmethod
     def has_errors(results: list[ScaffoldResult]) -> bool:
-        """Вернуть True если хотя бы одна директория завершилась с ошибкой."""
+        """Return True when at least one directory operation failed."""
         return any(r.has_error for r in results)
 
     @staticmethod
     def print_results(results: list[ScaffoldResult], console: Any) -> None:
-        """Вывести понятный отчёт о scaffolding-операциях."""
+        """Print a readable report for scaffolding operations."""
         if not results:
             return
         console.print()

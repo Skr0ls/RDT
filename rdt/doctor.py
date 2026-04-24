@@ -1,14 +1,14 @@
 """
-rdt doctor — полная диагностика Docker-проекта.
+rdt doctor — full Docker project diagnostics.
 
 Checks:
-  1. Docker доступен (docker --version)
-  2. Docker Compose v2 доступен (docker compose version)
-  3. compose-файл валиден (docker compose config)
-  4. Все ${VAR} в compose покрыты значениями из .env
-  5. Порты, прокинутые в compose, не заняты на хосте
-  6. depends_on не ссылается на несуществующие сервисы
-  7. Bind-mounted файлы (companion-файлы) существуют на диске
+  1. Docker is available (docker --version)
+  2. Docker Compose v2 is available (docker compose version)
+  3. The compose file is valid (docker compose config)
+  4. All ${VAR} references in compose are covered by .env values
+  5. Ports published by compose are not busy on the host
+  6. depends_on does not reference missing services
+  7. Bind-mounted files (companion files) exist on disk
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from rdt.yaml_manager import load_compose
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Типы результатов
+# Result types
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -36,11 +36,11 @@ class CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Вспомогательные функции
+# Helper functions
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_host_port(port_str: str) -> int | None:
-    """Извлечь host-порт из строки маппинга docker-compose."""
+    """Extract the host port from a docker-compose port mapping string."""
     port_str = str(port_str).strip("\"'")
     port_str = re.sub(r"/(tcp|udp)$", "", port_str)
     parts = port_str.split(":")
@@ -55,7 +55,7 @@ def _parse_host_port(port_str: str) -> int | None:
 
 
 def _load_env_values(env_file: Path) -> dict[str, str]:
-    """Загрузить переменные из .env без зависимости от dotenv."""
+    """Load variables from .env without depending on dotenv."""
     values: dict[str, str] = {}
     if not env_file.exists():
         return values
@@ -69,7 +69,7 @@ def _load_env_values(env_file: Path) -> dict[str, str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Проверка 1 — Docker установлен и работает
+# Check 1 — Docker is installed and running
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_docker_available() -> CheckResult:
@@ -85,7 +85,7 @@ def check_docker_available() -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Проверка 2 — Docker Compose v2 доступен
+# Check 2 — Docker Compose v2 is available
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_compose_available() -> CheckResult:
@@ -101,7 +101,7 @@ def check_compose_available() -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Проверка 3 — compose-файл проходит `docker compose config`
+# Check 3 — compose file passes `docker compose config`
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_compose_valid(file: Path) -> CheckResult:
@@ -123,7 +123,7 @@ def check_compose_valid(file: Path) -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Проверка 4 — все ${VAR} в compose покрыты значениями из .env
+# Check 4 — all ${VAR} references in compose are covered by .env
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_env_vars(file: Path, project_root: Path) -> CheckResult:
@@ -137,7 +137,7 @@ def check_env_vars(file: Path, project_root: Path) -> CheckResult:
         return CheckResult("env_vars", "ok", t("doctor.env_no_vars"))
 
     env_values = _load_env_values(project_root / ".env")
-    # Системные переменные тоже в счёт
+    # System environment variables count too.
     for k, v in os.environ.items():
         env_values.setdefault(k, v)
 
@@ -150,7 +150,7 @@ def check_env_vars(file: Path, project_root: Path) -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Проверка 5 — порты, прокинутые в compose, не заняты на хосте
+# Check 5 — ports published by compose are not busy on the host
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_port_conflicts(file: Path) -> CheckResult:
@@ -176,7 +176,7 @@ def check_port_conflicts(file: Path) -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Проверка 6 — depends_on не ссылается на несуществующие сервисы
+# Check 6 — depends_on does not reference missing services
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_dangling_depends_on(file: Path) -> CheckResult:
@@ -204,7 +204,7 @@ def check_dangling_depends_on(file: Path) -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Проверка 7 — bind-mount'ированные файлы существуют
+# Check 7 — bind-mounted files exist
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_companion_files(file: Path, project_root: Path) -> CheckResult:
@@ -216,13 +216,13 @@ def check_companion_files(file: Path, project_root: Path) -> CheckResult:
     missing: list[tuple[str, str]] = []
 
     def _check_path(svc: str, src: str) -> None:
-        # Bind-mounts: начинаются с . / ..
+        # Bind mounts start with . / ..
         if not (src.startswith("./") or src.startswith("../") or (src.startswith("/") and len(src) > 1)):
             return
         resolved = (project_root / src).resolve()
         if resolved.exists():
             return
-        # Файлы (с расширением или точкой в имени) — сообщаем как отсутствующий companion
+        # File-like paths (extension or dot in name) are reported as missing companions.
         if resolved.suffix or "." in resolved.name:
             missing.append((svc, src))
 
@@ -233,7 +233,7 @@ def check_companion_files(file: Path, project_root: Path) -> CheckResult:
             src = str(vol).split(":")[0]
             _check_path(svc_name, src)
 
-    # Верхнеуровневые configs / secrets
+    # Top-level configs / secrets.
     for section in ("configs", "secrets"):
         for _key, cfg in (data.get(section) or {}).items():
             if isinstance(cfg, dict) and (src := cfg.get("file")):
@@ -250,7 +250,7 @@ def check_companion_files(file: Path, project_root: Path) -> CheckResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Публичный агрегатор — запускает все проверки и возвращает список результатов
+# Public aggregator — runs all checks and returns their results
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_all_checks(file: Path, project_root: Path) -> list[CheckResult]:
