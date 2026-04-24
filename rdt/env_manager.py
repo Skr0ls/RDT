@@ -1,5 +1,5 @@
 """
-Управление .env и .env.example файлами.
+Manage .env and .env.example files.
 """
 from __future__ import annotations
 import re
@@ -7,13 +7,13 @@ import secrets
 import string
 from pathlib import Path
 
-# Regex для извлечения имён переменных из ${VAR_NAME} в любом контексте
+# Regex for extracting variable names from ${VAR_NAME} in any context.
 _VAR_PATTERN = re.compile(r'\$\{([^}]+)\}')
 
-# Переменные, которые считаются секретами
+# Variables considered secrets.
 _PASSWORD_KEYS = {"PASSWORD", "SECRET", "PASS", "KEY", "TOKEN"}
 
-# Стандартные credentials для каждого сервиса
+# Default credentials for each service.
 SERVICE_DEFAULTS: dict[str, str] = {
     # PostgreSQL
     "POSTGRES_USER": "postgres",
@@ -29,7 +29,7 @@ SERVICE_DEFAULTS: dict[str, str] = {
     "MARIADB_USER": "mariadb",
     "MARIADB_PASSWORD": "mariadb",
     "MARIADB_DATABASE": "mariadb",
-    # MS SQL (должен соответствовать политике сложности)
+    # MS SQL (must satisfy the complexity policy)
     "MSSQL_SA_PASSWORD": "Sa_Password1!",
     # Oracle
     "ORACLE_PASSWORD": "oracle",
@@ -44,7 +44,7 @@ SERVICE_DEFAULTS: dict[str, str] = {
     "INFLUXDB_PASSWORD": "influx",
     # Elasticsearch
     "ELASTIC_PASSWORD": "elastic",
-    # OpenSearch (должен быть сложным)
+    # OpenSearch (must be complex)
     "OPENSEARCH_PASSWORD": "0penSearch!",
     # RabbitMQ
     "RABBITMQ_USER": "guest",
@@ -76,7 +76,7 @@ def generate_password(length: int = 24) -> str:
 
 
 def _fallback_value(var_name: str) -> str:
-    """Запасное значение если переменной нет в SERVICE_DEFAULTS."""
+    """Fallback value when a variable is not present in SERVICE_DEFAULTS."""
     u = var_name.upper()
     if is_secret_key(var_name):
         return "password"
@@ -91,9 +91,9 @@ def _fallback_value(var_name: str) -> str:
 
 def get_env_values(preset_env: dict[str, str], hardcore: bool) -> dict[str, str]:
     """
-    Возвращает конкретные значения для .env переменных.
-    Использует regex для безопасного извлечения имён переменных из любого контекста.
-    hardcore=True → генерировать уникальные пароли.
+    Return concrete values for .env variables.
+    Uses a regex to safely extract variable names from any context.
+    hardcore=True means unique passwords are generated.
     """
     result: dict[str, str] = {}
     for placeholder in preset_env.values():
@@ -111,7 +111,7 @@ def get_env_values(preset_env: dict[str, str], hardcore: bool) -> dict[str, str]
 
 
 def write_env(env_path: Path, values: dict[str, str]) -> None:
-    """Дописать недостающие переменные в .env файл."""
+    """Append missing variables to the .env file."""
     existing: dict[str, str] = {}
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
@@ -131,12 +131,12 @@ def write_env(env_path: Path, values: dict[str, str]) -> None:
 
 
 def extract_vars_from_text(text: str) -> set[str]:
-    """Извлечь все имена переменных вида ${VAR} из произвольного текста."""
+    """Extract all ${VAR}-style variable names from arbitrary text."""
     return set(_VAR_PATTERN.findall(text))
 
 
 def get_service_env_vars(data: Any, service_name: str) -> set[str]:
-    """Вернуть все ${VAR} переменные, используемые конкретным сервисом в compose-данных."""
+    """Return all ${VAR} variables used by a specific service in compose data."""
     import io
     try:
         from ruamel.yaml import YAML
@@ -152,7 +152,7 @@ def get_service_env_vars(data: Any, service_name: str) -> set[str]:
 
 
 def get_all_env_vars_except(data: Any, exclude_service: str) -> set[str]:
-    """Вернуть все ${VAR} переменные, используемые всеми сервисами КРОМЕ указанного."""
+    """Return all ${VAR} variables used by all services except the specified one."""
     import io
     result: set[str] = set()
     try:
@@ -175,9 +175,9 @@ def find_orphaned_vars(
     data: Any,
     service_name: str,
 ) -> set[str]:
-    """Найти переменные ${VAR}, которые используются только удаляемым сервисом.
+    """Find ${VAR} variables used only by the service being removed.
 
-    Возвращает множество имён переменных, которые безопасно удалить из .env.
+    Returns variable names that can be safely removed from .env.
     """
     service_vars = get_service_env_vars(data, service_name)
     remaining_vars = get_all_env_vars_except(data, exclude_service=service_name)
@@ -185,9 +185,9 @@ def find_orphaned_vars(
 
 
 def remove_vars_from_env_file(env_path: Path, vars_to_remove: set[str]) -> int:
-    """Удалить указанные переменные из .env файла (in-place).
+    """Remove the specified variables from the .env file in place.
 
-    Возвращает количество удалённых строк.
+    Returns the number of removed lines.
     """
     if not env_path.exists() or not vars_to_remove:
         return 0
@@ -204,14 +204,14 @@ def remove_vars_from_env_file(env_path: Path, vars_to_remove: set[str]) -> int:
                 continue
         new_lines.append(line)
 
-    # Убрать trailing пустые строки, добавленные при write_env
+    # Remove trailing blank lines added by write_env.
     content = "".join(new_lines).rstrip("\n") + "\n" if new_lines else ""
     env_path.write_text(content, encoding="utf-8")
     return removed
 
 
 def write_env_example(example_path: Path, values: dict[str, str]) -> None:
-    """Записать/обновить .env.example с пустыми значениями."""
+    """Write/update .env.example with empty values."""
     existing_keys: set[str] = set()
     if example_path.exists():
         for line in example_path.read_text(encoding="utf-8").splitlines():

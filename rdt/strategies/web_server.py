@@ -1,11 +1,11 @@
 """
-WebServerStrategy — стратегия для веб-серверов (nginx, apache и подобных).
+WebServerStrategy — strategy for web servers such as nginx and apache.
 
-Особенности:
-- volumes как bind-mounts (не named volumes)
-- конфиг монтируется из локальной папки
-- для static/spa/php дополнительно монтируется директория с контентом
-- healthcheck через wget
+Features:
+- volumes are bind mounts instead of named volumes
+- config is mounted from a local directory
+- static/spa/php modes additionally mount a content directory
+- healthcheck uses wget
 """
 from __future__ import annotations
 
@@ -17,40 +17,40 @@ from rdt.strategies.base import BaseStrategy
 # Nginx
 # ---------------------------------------------------------------------------
 
-#: Nginx-режимы, которые требуют монтирования html-директории
+#: Nginx modes that require mounting an html directory.
 _HTML_MODES = {"nginx-static", "nginx-spa"}
 
-#: Дефолтная директория для конфига nginx (относительно cwd)
+#: Default nginx config directory relative to cwd.
 DEFAULT_CONFIG_DIR = "./nginx"
 
-#: Дефолтная директория для html (относительно cwd)
+#: Default html directory relative to cwd.
 DEFAULT_HTML_DIR = "./nginx/html"
 
 # ---------------------------------------------------------------------------
 # Apache
 # ---------------------------------------------------------------------------
 
-#: Apache-режимы (все пресеты на базе Apache)
+#: Apache modes (all Apache-based presets).
 _APACHE_MODES = {"apache-static", "apache-php"}
 
-#: Дефолтная директория для конфига Apache (относительно cwd)
+#: Default Apache config directory relative to cwd.
 DEFAULT_APACHE_CONFIG_DIR = "./apache"
 
-#: Дефолтная директория для html у apache-static (относительно cwd)
+#: Default html directory for apache-static relative to cwd.
 DEFAULT_APACHE_HTML_DIR = "./apache/html"
 
-#: Дефолтная директория исходников PHP-приложения (относительно cwd)
+#: Default PHP application source directory relative to cwd.
 DEFAULT_APACHE_SRC_DIR = "./src"
 
 
 class WebServerStrategy(BaseStrategy):
     """
-    Стратегия для веб-серверов (nginx и apache).
+    Strategy for web servers (nginx and apache).
 
-    Отличия от BaseStrategy:
-    - не использует named volumes — только bind-mounts
-    - маршрутизирует enrich-логику по семейству сервера
-    - добавляет healthcheck через wget
+    Differences from BaseStrategy:
+    - does not use named volumes, only bind mounts
+    - routes enrich logic by server family
+    - adds a wget-based healthcheck
     """
 
     def _enrich(self, service: dict[str, Any]) -> None:
@@ -59,7 +59,7 @@ class WebServerStrategy(BaseStrategy):
         else:
             self._enrich_nginx(service)
 
-        # Общий healthcheck для всех веб-серверов
+        # Shared healthcheck for all web servers.
         service["healthcheck"] = {
             "test": ["CMD-SHELL", "wget -qO /dev/null http://localhost/ || exit 1"],
             "interval": "10s",

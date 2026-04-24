@@ -1,5 +1,5 @@
 """
-MonitoringStrategy — специфичные лимиты ресурсов и конфигурационные маппинги.
+MonitoringStrategy — monitoring-specific resource limits and config mappings.
 """
 from __future__ import annotations
 from typing import Any
@@ -8,7 +8,7 @@ from rdt.strategies.base import BaseStrategy
 
 
 class MonitoringStrategy(BaseStrategy):
-    """Стратегия для мониторинга: volumes + healthcheck + config-маппинги."""
+    """Strategy for monitoring services: volumes + healthcheck + config mappings."""
 
     def _enrich(self, service: dict[str, Any]) -> None:
         volume_source = self.answers.get("volume_source", f"{self.preset.name}_data")
@@ -26,7 +26,7 @@ class MonitoringStrategy(BaseStrategy):
             hc.update(custom_hc)
             service["healthcheck"] = hc
 
-        # Дополнительные env-переменные от smart-mapping
+        # Additional env variables from smart mapping.
         smart_env = self.answers.get("smart_env", {})
         if smart_env:
             existing = service.get("environment", {})

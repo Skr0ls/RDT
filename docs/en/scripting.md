@@ -330,7 +330,7 @@ RDT_LANG=ru rdt add postgres --yes
 | Code | Language |
 |------|----------|
 | `en` | English |
-| `ru` | Русский |
+| `ru` | Russian |
 
 ---
 
