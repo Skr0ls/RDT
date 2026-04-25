@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rdt-rambo"
+name = "locker-room-tolls-rdt"
 version = "2.1.1"
 description = "Rambo Docker Tools — CLI for docker-compose generation"
 readme = "README.md"
@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [
-    { name = "Skr0ls", email = "dskrl@outlook.com" },
+    { name = "Locker-Room-Tools", email = "dskrl@outlook.com" },
 ]
 keywords = ["docker", "docker-compose", "cli", "devops", "generator"]
 classifiers = [
@@ -42,9 +42,9 @@ mcp = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Skr0ls/RDT"
-Repository = "https://github.com/Skr0ls/RDT"
-"Bug Tracker" = "https://github.com/Skr0ls/RDT/issues"
+Homepage = "https://github.com/Locker-Room-Tools/RDT"
+Repository = "https://github.com/Locker-Room-Tools/RDT"
+"Bug Tracker" = "https://github.com/Locker-Room-Tools/RDT/issues"
 
 [project.scripts]
 rdt = "rdt.cli:app"
